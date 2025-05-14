@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get Changed Files in Dist
+      - name: Get Changed Files in Dist and Check for BREAKING_CHANGE.md
         id: changed-files
         run: |
           CHANGED_FILES=$(git diff --name-only HEAD^ HEAD -- dist)
@@ -27,17 +27,9 @@ jobs:
           echo "::group::Changed Files"
           echo "$CHANGED_FILES"
           echo "::endgroup::"
-      - name: Determine Release Type
-        id: release-type
-        run: |
-          MAJOR_CHANGE=false
-          for file in ${{fromJson(toJson(split(steps.changed-files.outputs.files, '\n')))}; do
-            if [[ "$file" == "dist/BREAKING_CHANGE.md" ]]; then #Note, caps are very important!
-              MAJOR_CHANGE=true
-              break
-            fi
-          done
-          if [[ "$MAJOR_CHANGE" == "true" ]]; then
+
+          # Check for BREAKING_CHANGE.md directly within the changed files string
+          if [[ "$CHANGED_FILES" == *"dist/BREAKING_CHANGE.md"* ]]; then
             echo "release_level=major" >> $GITHUB_OUTPUT
             echo "Detected a major change (BREAKING_CHANGE.md found)."
           else
@@ -55,7 +47,7 @@ jobs:
         id: determine-version
         run: |
           CURRENT_VERSION=$(node -p "require('./package.json').version")
-          RELEASE_LEVEL="${{ steps.release-type.outputs.release_level }}"
+          RELEASE_LEVEL="${{ steps.changed-files.outputs.release_level }}"
 
           if [ "$RELEASE_LEVEL" == "major" ]; then
             NEW_VERSION=$(npm version major --no-git-tag-version | awk '{print $1}')
