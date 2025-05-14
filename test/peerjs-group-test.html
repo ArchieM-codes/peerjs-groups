@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Peer Chat</title>
+</head>
+<body>
+  <ul id="log"></ul>
+  <input id="input" placeholder="Type…">
+  <button id="send">Send</button>
+
+  <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+  <script src="peer-group.js"></script>
+  <script>
+    const log = msg=> {
+      let li = document.createElement('li');
+      li.textContent = msg;
+      document.getElementById('log').append(li);
+    };
+
+    // Host example
+    const host = new PeerGroups.Host('my-group', {host:'your.server',port:9000});
+    host.setHostNickname('HostAlice');
+    host.on('open', ()=> log('Group ready'));
+    host.on('joinRequest', (id,nick,accept,reject)=>{
+      log(`${nick} wants to join`);
+      accept();
+    });
+    host.on('memberJoined', (id,nick)=> log(`${nick} joined`));
+    host.on('memberLeft', id=> log(`${id} left`));
+    host.on('message', (msg,fromId,fromNick)=> log(`${fromNick}: ${msg}`));
+
+    // Client example
+    const client = new PeerGroups.Client({
+      clientId: 'bob',
+      groupId: 'my-group',
+      nickname:'Bobby'
+    });
+    client.on('open', ()=> client.join().catch(e=>log('Join failed:'+e)));
+    client.on('joined', ()=> log('Joined!'));
+    client.on('message',(msg,fromId,fromNick)=> log(`${fromNick}: ${msg}`));
+    client.on('memberList', list=> log('Members: '+ list.map(m=>m.nickname).join(', ')));
+
+    document.getElementById('send').onclick = ()=>{
+      let txt = document.getElementById('input').value;
+      client.send(txt);
+    };
+  </script>
+</body>
+</html>
