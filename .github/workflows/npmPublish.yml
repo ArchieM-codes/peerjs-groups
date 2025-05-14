@@ -1,65 +1,103 @@
-name: Publish Release on [publish] Commit
+name: Publish to npm and GH Release on Dist Changes
 
 on:
   push:
-    branches:
-      - main  # Or your main branch name
+    paths:
+      - 'dist/**'  # Trigger only when files in 'dist' directory change
 
 jobs:
-  check_and_publish:
+  publish:
     runs-on: ubuntu-latest
     permissions:
       contents: write # Required for creating releases
-      packages: write # Required for publishing to npm (if applicable)
+      packages: write # Required for publishing to npm
+      pull-requests: write # Required to write pull-requests
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Fetch all history for commit message analysis
+          fetch-depth: 0
 
-      - name: Check for [publish] in commit messages
-        id: check_publish
+      - name: Get Changed Files in Dist
+        id: changed-files
         run: |
-          PUBLISH_COMMIT=$(git log --grep='$$publish$$' --format=%H -n 1)
-          if [ -n "$PUBLISH_COMMIT" ]; then
-            echo "::set-output name=publish_commit::$PUBLISH_COMMIT"
-            echo "::set-output name=should_publish::true"
+          CHANGED_FILES=$(git diff --name-only HEAD^ HEAD -- dist)
+          echo "::set-output name=files::$CHANGED_FILES"
+
+      - name: Determine Release Type
+        id: release-type
+        run: |
+          MAJOR_CHANGE=false
+          for file in ${{ steps.changed-files.outputs.files }}; do
+            if [[ "$file" == "dist/breaking_change.txt" ]]; then
+              MAJOR_CHANGE=true
+              break
+            fi
+          done
+
+          if [[ "$MAJOR_CHANGE" == "true" ]]; then
+            echo "::set-output name=release_level::major"
+            echo "Detected a major change (breaking_change.txt found)."
           else
-            echo "::set-output name=should_publish::false"
-            echo "No commit with [publish] found. Skipping release and npm publish."
+            echo "::set-output name=release_level::minor"
+            echo "Detected a minor change."
           fi
 
-      - name: Create Release
-        if: steps.check_publish.outputs.should_publish == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed for creating releases
-        run: |
-          PUBLISH_COMMIT="${{ steps.check_publish.outputs.publish_commit }}"
-          TAG_NAME="release-$(date +%Y%m%d-%H%M%S)" # Create a unique tag
-
-          # Create a new tag pointing to the [publish] commit
-          git tag "$TAG_NAME" "$PUBLISH_COMMIT"
-
-          # Push the tag to the repository
-          git push origin "$TAG_NAME"
-
-          # Create a GitHub Release based on the tag
-          gh release create "$TAG_NAME" --title "Release $(date +%Y-%m-%d %H:%M:%S)" --target "$PUBLISH_COMMIT" --notes "Automated release triggered by commit message containing [publish]"
-
-      - name: Set up Node.js (If publishing to npm)
-        if: steps.check_publish.outputs.should_publish == 'true'
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18' # Or your preferred Node.js version
+          node-version: '18'
           registry-url: 'https://registry.npmjs.org'
-        id: setup-node  # Added an ID for potential future use
 
-      - name: Publish to npm (If publishing to npm)
-        if: steps.check_publish.outputs.should_publish == 'true' && steps.setup-node.conclusion == 'success'
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Determine Next Version
+        id: determine-version
+        run: |
+          RELEASE_LEVEL="${{ steps.release-type.outputs.release_level }}"
+          if [ "$RELEASE_LEVEL" == "major" ]; then
+              NEW_VERSION=$(npm version major --no-git-tag-version | awk '{print $1}')
+          else
+              NEW_VERSION=$(npm version minor --no-git-tag-version | awk '{print $1}')
+          fi
+          echo "::set-output name=next_version::$NEW_VERSION"
+          echo "New version is $NEW_VERSION"
+
+      - name: Update package.json versions and commit
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          npm version "${{ steps.determine-version.outputs.next_version }}" --no-git-tag-version
+          git add package.json
+          git commit -m "chore: Bump version to ${{ steps.determine-version.outputs.next_version }}"
+
+      - name: Create Pull Request
+        id: create-pull-request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: Bump version for release"
+          title: "Bump version for release"
+          body: "Automated version bump for a new release."
+          branch: release-version-bump
+          base: main
+
+      - name: Authenticate with npm
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
+
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish package
+        run: cd dist && npm publish --access public
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: ${{ github.event_name == 'push' }}
         run: |
-          npm ci
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
-          npm publish --access public
+          VERSION=$(node -p "require('./package.json').version")
+          gh release create "v$VERSION" --title "Release v$VERSION" --notes "Automated release"
