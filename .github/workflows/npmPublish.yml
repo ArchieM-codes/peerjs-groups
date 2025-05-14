@@ -30,7 +30,6 @@ jobs:
           fi
 
       - name: Publish Release
-        if: steps.check_publish.outputs.should_publish == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed for creating releases
         run: |
