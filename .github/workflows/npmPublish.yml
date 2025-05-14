@@ -9,9 +9,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Required for creating releases
-      packages: write # Required to publish to npm
-      pull-requests: write # Required to write pull-requests
+      contents: write
+      packages: write
+      #pull-requests: write # NO LONGER NEEDED. Using PAT
 
     steps:
       - name: Checkout repository
@@ -46,7 +46,6 @@ jobs:
       - name: Extract Version from Commit Message (if present)
         id: extract-version
         run: |
-          # Extract version from commit message (e.g., "chore: Update dist files v1.2.3")
           VERSION=$(echo "${{ steps.commit-message.outputs.commit_message }}" | grep -o -E "v[0-9]+\.[0-9]+\.[0-9]+$")
 
           if [[ -n "$VERSION" ]]; then
@@ -108,7 +107,7 @@ jobs:
         if: steps.determine-version.outputs.skip_version_bump != 'true'
         uses: peter-evans/create-pull-request@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT }}  # Use PAT instead of GITHUB_TOKEN
           commit-message: "chore: Bump version for release"
           title: "Bump version for release"
           body: "Automated version bump for a new release."
@@ -129,7 +128,7 @@ jobs:
 
       - name: Create Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} #You can now use the github token!
         if: ${{ steps.determine-version.outputs.skip_version_bump != 'true' && github.event_name == 'push' }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
