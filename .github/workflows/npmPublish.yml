@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get Changed Files in Dist and Check for BREAKING_CHANGE.md
+      - name: Get Changed Files in Dist
         id: changed-files
         run: |
           CHANGED_FILES=$(git diff --name-only HEAD^ HEAD -- dist)
@@ -37,6 +37,26 @@ jobs:
             echo "Detected a minor change."
           fi
 
+      - name: Get Commit Message
+        id: commit-message
+        run: |
+          COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+          echo "commit_message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
+
+      - name: Extract Version from Commit Message (if present)
+        id: extract-version
+        run: |
+          # Extract version from commit message (e.g., "chore: Update dist files v1.2.3")
+          VERSION=$(echo "${{ steps.commit-message.outputs.commit_message }}" | grep -o -E "v[0-9]+\.[0-9]+\.[0-9]+$")
+
+          if [[ -n "$VERSION" ]]; then
+            echo "version_from_commit=$VERSION" >> $GITHUB_OUTPUT
+            echo "Found version in commit message: $VERSION"
+          else
+            echo "version_from_commit=" >> $GITHUB_OUTPUT # Set to empty if not found
+            echo "No version found in commit message."
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
@@ -48,8 +68,13 @@ jobs:
         run: |
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           RELEASE_LEVEL="${{ steps.changed-files.outputs.release_level }}"
+          VERSION_FROM_COMMIT="${{ steps.extract-version.outputs.version_from_commit }}"
 
-          if [ "$RELEASE_LEVEL" == "major" ]; then
+          if [[ -n "$VERSION_FROM_COMMIT" ]]; then
+            # Use version from commit message if found
+            NEW_VERSION="$VERSION_FROM_COMMIT"
+            echo "Using version from commit message: $NEW_VERSION"
+          elif [ "$RELEASE_LEVEL" == "major" ]; then
             NEW_VERSION=$(npm version major --no-git-tag-version | awk '{print $1}')
           else
             NEW_VERSION=$(npm version minor --no-git-tag-version | awk '{print $1}')
