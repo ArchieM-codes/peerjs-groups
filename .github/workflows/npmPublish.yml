@@ -23,24 +23,25 @@ jobs:
         id: changed-files
         run: |
           CHANGED_FILES=$(git diff --name-only HEAD^ HEAD -- dist)
-          echo "::set-output name=files::$CHANGED_FILES"
-
+          echo "files=$CHANGED_FILES" >> $GITHUB_OUTPUT
+          echo "::group::Changed Files"
+          echo "$CHANGED_FILES"
+          echo "::endgroup::"
       - name: Determine Release Type
         id: release-type
         run: |
           MAJOR_CHANGE=false
-          for file in ${{ steps.changed-files.outputs.files }}; do
+          for file in ${{fromJson(toJson(split(steps.changed-files.outputs.files, '\n')))}; do
             if [[ "$file" == "dist/BREAKING_CHANGE.md" ]]; then #Note, caps are very important!
               MAJOR_CHANGE=true
               break
             fi
           done
-
           if [[ "$MAJOR_CHANGE" == "true" ]]; then
-            echo "::set-output name=release_level::major"
+            echo "release_level=major" >> $GITHUB_OUTPUT
             echo "Detected a major change (BREAKING_CHANGE.md found)."
           else
-            echo "::set-output name=release_level::minor"
+            echo "release_level=minor" >> $GITHUB_OUTPUT
             echo "Detected a minor change."
           fi
 
@@ -63,20 +64,20 @@ jobs:
           fi
 
           if [ "$NEW_VERSION" == "$CURRENT_VERSION" ]; then
-            echo "::set-output name=skip_version_bump::true"
+            echo "skip_version_bump=true" >> $GITHUB_OUTPUT
             echo "Version already up to date. Skipping version bump."
           else
-            echo "::set-output name=skip_version_bump::false"
+            echo "skip_version_bump=false" >> $GITHUB_OUTPUT
             echo "Current version: $CURRENT_VERSION"
             echo "New version: $NEW_VERSION"
-            echo "::set-output name=next_version::$NEW_VERSION"
+            echo "next_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           fi
 
       - name: Update package.json versions and commit
         if: steps.determine-version.outputs.skip_version_bump != 'true'
         run: |
-          git config --local user.email "actions@github.com"
-          git config --local user.name "GitHub Actions"
+          git config --local user.email "futuretech.coder4@gmail.com"
+          git config --local user.name "volcar144"
           npm version "${{ steps.determine-version.outputs.next_version }}" --no-git-tag-version
           git add package.json
           git commit -m "chore: Bump version to ${{ steps.determine-version.outputs.next_version }}"
@@ -103,7 +104,7 @@ jobs:
 
       - name: Publish package
         if: steps.determine-version.outputs.skip_version_bump != 'true'
-        run: cd dist && npm publish --access public
+        run: npm publish --access public
 
       - name: Create Release
         env:
