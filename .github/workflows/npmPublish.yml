@@ -52,12 +52,7 @@ jobs:
             echo "Package '$PACKAGE_NAME' already exists on npm."
           fi
 
-      - name: Publish package (if it doesn't exist)
-        if: steps.check-package.outputs.package_exists == 'false'
+      - name: Publish package
         working-directory: ${{ github.workspace }}/dist
-        run: npm publish --access public
-
-      - name: Publish package (if it exists)
-        if: steps.check-package.outputs.package_exists == 'true'
-        working-directory: ${{ github.workspace }}/dist
-        run: npm publish --access public
+        run: |
+          npm publish --access public
