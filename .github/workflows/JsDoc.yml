@@ -25,13 +25,7 @@ jobs:
 
       - name: Generate JSDoc
         run: |
-          jsdoc -c jsdoc.conf.json
-          # jsdoc -d doc ./ -t ./node_modules/minami
-
-      - name: Move generated documentation to /doc
-        run: |
-          mkdir -p doc
-          mv out/* doc/
+          jsdoc -d doc src/peerjs-groups.js -t ./node_modules/minami
 
       - name: Commit and Push Documentation
         uses: stefanzweifel/git-auto-commit-action@v4
@@ -39,3 +33,5 @@ jobs:
           commit_message: 'docs(jsdoc): Update JSDoc documentation'
           repository: .
           branch: ${{ github.head_ref || github.ref_name }}
+          commit_user_name: MaxAI-FreeAI
+          commit_user_email: freeai@maxai.com
