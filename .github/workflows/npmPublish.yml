@@ -1,35 +1,65 @@
-name: Publish to npm
+name: Publish Release on [publish] Commit
 
 on:
-  release:
-    types: [published]
+  push:
+    branches:
+      - main  # Or your main branch name
 
 jobs:
-  publish:
+  check_and_publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write
+      contents: write # Required for creating releases
+      packages: write # Required for publishing to npm (if applicable)
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Fetch all history for commit message analysis
 
-      - name: Set up Node.js
+      - name: Check for [publish] in commit messages
+        id: check_publish
+        run: |
+          PUBLISH_COMMIT=$(git log --grep='$$publish$$' --format=%H -n 1)
+          if [ -n "$PUBLISH_COMMIT" ]; then
+            echo "::set-output name=publish_commit::$PUBLISH_COMMIT"
+            echo "::set-output name=should_publish::true"
+          else
+            echo "::set-output name=should_publish::false"
+          fi
+
+      - name: Publish Release
+        if: steps.check_publish.outputs.should_publish == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed for creating releases
+        run: |
+          PUBLISH_COMMIT="${{ steps.check_publish.outputs.publish_commit }}"
+          TAG_NAME="release-$(date +%Y%m%d-%H%M%S)" # Create a unique tag
+
+          # Create a new tag pointing to the [publish] commit
+          git tag "$TAG_NAME" "$PUBLISH_COMMIT"
+
+          # Push the tag to the repository
+          git push origin "$TAG_NAME"
+
+          # Create a GitHub Release based on the tag
+          gh release create "$TAG_NAME" --title "Release $(date +%Y-%m-%d %H:%M:%S)" --target "$PUBLISH_COMMIT" --notes "Automated release triggered by commit message containing [publish]"
+
+      - name: Set up Node.js (If publishing to npm)
+        if: steps.check_publish.outputs.should_publish == 'true'
         uses: actions/setup-node@v3
         with:
-          node-version: '18'  # Or your preferred Node.js version
+          node-version: '18' # Or your preferred Node.js version
           registry-url: 'https://registry.npmjs.org'
+        id: setup-node  # Added an ID for potential future use
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Authenticate with npm
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
-
+      - name: Publish to npm (If publishing to npm)
+        if: steps.check_publish.outputs.should_publish == 'true' && steps.setup-node.conclusion == 'success'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm ci
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
+          cd dist && npm publish --access public
 
-      - name: Publish package
-        run: cd dist && npm publish --access public
