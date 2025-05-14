@@ -1,5 +1,5 @@
 {
-  "name": "Peerjs-groups",
+  "name": "peerjs-groups",
   "version": "0.1.0-alpha",
   "description": "A js library to facilitate the conenction of multiple peers via peerjs",
   "main": "peerjs-groups.min.js",  
