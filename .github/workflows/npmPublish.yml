@@ -30,6 +30,34 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish package
+      - name: Get Package Name and Version
+        id: package-info
+        run: |
+          PACKAGE_NAME=$(jq -r .name dist/package.json)
+          PACKAGE_VERSION=$(jq -r .version dist/package.json)
+          echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
+          echo "Package Name: $PACKAGE_NAME, Version: $PACKAGE_VERSION"
+
+      - name: Check if Package Exists
+        id: check-package
+        run: |
+          PACKAGE_NAME="${{ steps.package-info.outputs.PACKAGE_NAME }}"
+          npm view "$PACKAGE_NAME" > /dev/null 2>&1
+          if [ $? -ne 0 ]; then
+            echo "package_exists=false" >> $GITHUB_OUTPUT
+            echo "Package '$PACKAGE_NAME' does not exist on npm."
+          else
+            echo "package_exists=true" >> $GITHUB_OUTPUT
+            echo "Package '$PACKAGE_NAME' already exists on npm."
+          fi
+
+      - name: Publish package (if it doesn't exist)
+        if: steps.check-package.outputs.package_exists == 'false'
+        working-directory: ${{ github.workspace }}/dist
+        run: npm publish --access public
+
+      - name: Publish package (if it exists)
+        if: steps.check-package.outputs.package_exists == 'true'
         working-directory: ${{ github.workspace }}/dist
         run: npm publish --access public
