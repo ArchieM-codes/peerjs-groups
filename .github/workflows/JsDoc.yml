@@ -9,13 +9,14 @@ jobs:
   jsdoc:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required for pushing changes
+      contents: write  # Required for pushing changes.  Needed for creating a pull request
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0 # Ensures the full history is available
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -36,15 +37,35 @@ jobs:
         run: |
           ls -la doc/
 
-      - name: Commit and Push Documentation
-        uses: stefanzweifel/git-auto-commit-action@v4
+      - name: Create Pull Request
+        run: |
+          git config --global user.name "DocBot"
+          git config --global user.email "docbot@example.com"  # Replace with an appropriate email
+          git add doc/*
+          git commit -m "docs(jsdoc): Update JSDoc documentation"
+          git push origin HEAD:refs/heads/jsdoc-update
+
+      - name: Create Pull Request using GitHub CLI
+        uses: actions/github-script@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          commit_message: 'docs(jsdoc): Update JSDoc documentation'
-          repository: .
-          branch: ${{ github.head_ref || github.ref_name }}
-          commit_user_name: DocBot
+          script: |
+            try {
+              const result = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'Update JSDoc documentation',
+                head: 'jsdoc-update',
+                base: 'main',
+                body: 'Automated update of JSDoc documentation.',
+                draft: false
+              });
+              console.log("Pull request created: " + result.data.html_url);
+            } catch (error) {
+              console.error("Error creating pull request:", error);
+            }
 
       - name: Debug Check Git config
         run: |
           git config --list
-
