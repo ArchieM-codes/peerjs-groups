@@ -33,7 +33,8 @@ jobs:
           jsdoc -d doc src/peerjs-groups.js -t ./node_modules/minami
 
       - name: Debug: List files in doc directory AFTER jsdoc
-        run: ls -la doc/  # Check if files are actually created
+        run: |
+          ls -la doc/  # Check if files are actually created
 
       - name: Commit and Push Documentation
         uses: stefanzweifel/git-auto-commit-action@v4
@@ -41,8 +42,10 @@ jobs:
           commit_message: 'docs(jsdoc): Update JSDoc documentation'
           repository: .
           branch: ${{ github.head_ref || github.ref_name }}
+          commit_user_name: Volcar144
+          commit_user_email: contact@archiem.top
 
       - name: Debug: Check Git config
         run: |
-          git config --list #Show local .git/config file.
-
+          git config --list
+          # Show local .git/config file.
