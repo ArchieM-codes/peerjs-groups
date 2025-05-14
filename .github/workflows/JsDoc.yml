@@ -9,7 +9,7 @@ jobs:
   jsdoc:
     runs-on: ubuntu-latest
     permissions:
-      contents: write, read  # Required for pushing changes
+      contents: write  # Required for pushing changes
 
     steps:
       - name: Checkout Repository
