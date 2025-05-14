@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -22,7 +24,7 @@ jobs:
         run: |
           npm install jsdoc -g
           npm install minami
-          npm install taffydb # add this line to install taffydb
+          npm install taffydb
 
       - name: Generate JSDoc
         run: |
@@ -34,5 +36,3 @@ jobs:
           commit_message: 'docs(jsdoc): Update JSDoc documentation'
           repository: .
           branch: ${{ github.head_ref || github.ref_name }}
-          commit_user_name: MaxAI-FreeAI
-          commit_user_email: freeai@maxai.com
