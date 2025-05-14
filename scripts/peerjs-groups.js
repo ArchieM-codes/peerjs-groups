@@ -1,3 +1,6 @@
+//The main file to support groups in peerjs Copyright (C) 2025  Volcar144
+
+
 ;(function(window){
   'use strict';
 
