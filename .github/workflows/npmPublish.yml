@@ -1,22 +1,23 @@
-name: Publish to npm on Tag
+name: Semantic Release
 
 on:
   push:
-    tags:
-      - 'v*'  # Trigger on tags matching v* (e.g., v1.2.3)
+    branches:
+      - main  # Or your main branch
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     permissions:
-      contents: read # Required for reading package.json
-      packages: write # Required to publish to npm
+      contents: write
+      packages: write
+      id-token: write  # This is crucial for trusted publishing
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Important for Semantic Release
 
       - name: Set up Node.js
         uses: actions/setup-node@v3
@@ -24,35 +25,17 @@ jobs:
           node-version: '18'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Authenticate with npm
+      - name: Install Dependencies
+        run: npm install -D semantic-release @semantic-release/commit-analyzer @semantic-release/release-notes-generator @semantic-release/npm @semantic-release/github
+
+      - name: Authenticate to npm
         run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
+          echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > .npmrc
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Get Package Name and Version
-        id: package-info
-        run: |
-          PACKAGE_NAME=$(jq -r .name dist/package.json)
-          PACKAGE_VERSION=$(jq -r .version dist/package.json)
-          echo "PACKAGE_NAME=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
-          echo "Package Name: $PACKAGE_NAME, Version: $PACKAGE_VERSION"
-
-      - name: Check if Package Exists
-        id: check-package
-        run: |
-          PACKAGE_NAME="${{ steps.package-info.outputs.PACKAGE_NAME }}"
-          npm view "$PACKAGE_NAME" > /dev/null 2>&1
-          if [ $? -ne 0 ]; then
-            echo "package_exists=false" >> $GITHUB_OUTPUT
-            echo "Package '$PACKAGE_NAME' does not exist on npm."
-          else
-            echo "package_exists=true" >> $GITHUB_OUTPUT
-            echo "Package '$PACKAGE_NAME' already exists on npm."
-          fi
-
-      - name: Publish package
-        working-directory: ${{ github.workspace }}/dist
-        run: |
-          npm publish --access public
+      - name: Semantic Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npx semantic-release
