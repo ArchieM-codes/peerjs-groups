@@ -9,7 +9,8 @@ jobs:
   jsdoc:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required for pushing changes
+      contents: write, read
+      # Required for pushing changes
 
     steps:
       - name: Checkout Repository
@@ -32,9 +33,9 @@ jobs:
         run: |
           jsdoc -d doc src/peerjs-groups.js -t ./node_modules/minami
 
-      - name: Debug: List files in doc directory AFTER jsdoc
+      - name: Debug 
         run: |
-          ls -la doc/  # Check if files are actually created
+          ls -la doc/
 
       - name: Commit and Push Documentation
         uses: stefanzweifel/git-auto-commit-action@v4
@@ -42,10 +43,9 @@ jobs:
           commit_message: 'docs(jsdoc): Update JSDoc documentation'
           repository: .
           branch: ${{ github.head_ref || github.ref_name }}
-          commit_user_name: Volcar144
-          commit_user_email: contact@archiem.top
+          commit_user_name: MaxAI-FreeAI
+          commit_user_email: freeai@maxai.com
 
-      - name: Debug: Check Git config
+      - name: Debug Check Git config
         run: |
           git config --list
-          # Show local .git/config file.
