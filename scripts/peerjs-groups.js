@@ -1,0 +1,462 @@
+;(function(window){
+  'use strict';
+
+  if (typeof Peer === 'undefined') {
+    throw new Error('Peer.js must be included before peer-group.js');
+  }
+
+  /**
+   * Simple EventEmitter
+   * @ignore
+   */
+  function Emitter(){
+    this._events = {};
+  }
+  Emitter.prototype.on = function(evt, fn){
+    if (typeof fn !== 'function') return;
+    (this._events[evt] || (this._events[evt]=[])).push(fn);
+    return this;
+  };
+  Emitter.prototype.off = function(evt, fn){
+    if (!this._events[evt]) return this;
+    this._events[evt] = this._events[evt].filter(f=>f!==fn);
+    return this;
+  };
+  Emitter.prototype.emit = function(evt, ...args){
+    (this._events[evt]||[]).slice().forEach(fn=>{
+      try{ fn.apply(this, args); }
+      catch(e){ console.error('Event handler error', e); }
+    });
+  };
+
+  /**
+   * @namespace PeerGroups
+   */
+  var PeerGroups = {};
+
+  // ------------------------------------------------------------------------------------------------
+  //                                     Host Class
+  // ------------------------------------------------------------------------------------------------
+
+  /**
+   * @class Host
+   * @memberof PeerGroups
+   * @extends Emitter
+   * @param {string} groupId        Unique ID for this group (PeerJS ID).
+   * @param {object} [options]      peerOptions for new Peer(...)
+   *
+   * Emits:
+   *  - 'open'(id)
+   *  - 'error'(err)
+   *  - 'joinRequest'(clientId, nickname, acceptFn, rejectFn)
+   *  - 'memberJoined'(clientId, nickname)
+   *  - 'memberLeft'(clientId)
+   *  - 'message'(payload, fromId, fromNick)
+   */
+  PeerGroups.Host = function(groupId, options){
+    if (typeof groupId !== 'string' || !groupId) {
+      throw new Error('Host: groupId must be a non-empty string');
+    }
+    Emitter.call(this);
+    this.groupId   = groupId;
+    this.peer      = new Peer(groupId, options||{});
+    this._members  = {};   // clientId -> {conn, nickname}
+    this._banned   = new Set();
+    this._queues   = new WeakMap(); // conn -> [msgs]
+
+    this.peer.on('open', id   => this.emit('open', id));
+    this.peer.on('error',err  => this.emit('error', err));
+    this.peer.on('connection', conn => this._handleConn(conn));
+  };
+  PeerGroups.Host.prototype = Object.create(Emitter.prototype);
+  PeerGroups.Host.prototype.constructor = PeerGroups.Host;
+
+  PeerGroups.Host.prototype._handleConn = function(conn){
+    var self = this;
+    var clientId = conn.peer;
+    // auto‐reject banned
+    if (this._banned.has(clientId)) {
+      conn.on('open',()=>{
+        conn.send({type:'joinRejected', reason:'banned'});
+        conn.close();
+      });
+      return;
+    }
+    this._queues.set(conn, []);
+    conn.on('data', data => this._onData(conn, data));
+    conn.on('open', ()=> this._flush(conn));
+    conn.on('close',()=>{
+      if (self._members[clientId]) {
+        delete self._members[clientId];
+        self.emit('memberLeft', clientId);
+        self._broadcastMemberList();
+      }
+      self._queues.delete(conn);
+    });
+  };
+
+  PeerGroups.Host.prototype._onData = function(conn, data){
+    if (!data || typeof data.type!=='string') return;
+    var clientId = conn.peer;
+    switch(data.type){
+      case 'joinRequest':
+        var nick = typeof data.nickname==='string' && data.nickname.trim()
+                   ? data.nickname.trim() : clientId;
+        this.emit('joinRequest',
+          clientId,
+          nick,
+          () => this._accept(conn, nick),
+          reason=> this._reject(conn, reason)
+        );
+        break;
+
+      case 'message':
+        if (!this._members[clientId]) return; // ignore if not accepted
+        this.emit('message', data.payload, clientId, this._members[clientId].nickname);
+        // broadcast to others
+        this._broadcast({
+          type:'message',
+          payload: data.payload,
+          fromId:   clientId,
+          fromNick: this._members[clientId].nickname
+        }, conn);
+        break;
+
+      case 'nicknameChange':
+        if (!this._members[clientId]) return;
+        var old = this._members[clientId].nickname;
+        var neu = (typeof data.nickname==='string' && data.nickname.trim())
+                  ? data.nickname.trim() : old;
+        this._members[clientId].nickname = neu;
+        this.emit('nicknameChanged', clientId, old, neu);
+        this._broadcastMemberList();
+        break;
+
+      default:
+        // ignore or extend
+        break;
+    }
+  };
+
+  PeerGroups.Host.prototype._accept = function(conn, nickname){
+    if (!conn.open) return;
+    var id = conn.peer;
+    this._members[id] = {conn:conn, nickname:nickname};
+    conn.send({type:'joinAccepted', nickname:this._ownNick||this.groupId});
+    this.emit('memberJoined', id, nickname);
+    this._broadcastMemberList();
+  };
+
+  PeerGroups.Host.prototype._reject = function(conn, reason){
+    reason = reason||'rejected';
+    if (conn.open) conn.send({type:'joinRejected', reason:reason});
+    conn.close();
+  };
+
+  PeerGroups.Host.prototype._broadcast = function(msg, exceptConn){
+    Object.values(this._members).forEach(m=>{
+      if (m.conn!==exceptConn) this._send(m.conn, msg);
+    });
+  };
+
+  PeerGroups.Host.prototype._send = function(conn, msg){
+    var q = this._queues.get(conn);
+    if (conn.open) conn.send(msg);
+    else if (q) q.push(msg);
+  };
+
+  PeerGroups.Host.prototype._flush = function(conn){
+    var q = this._queues.get(conn);
+    while(q && q.length) conn.send(q.shift());
+  };
+
+  /**
+   * Broadcast updated member list
+   * @private
+   */
+  PeerGroups.Host.prototype._broadcastMemberList = function(){
+    var list = Object.entries(this._members).map(([id,m])=>({
+      id:id, nickname:m.nickname
+    }));
+    this._broadcast({type:'memberList', members:list});
+  };
+
+  /**
+   * Kick a member
+   * @param {string} clientId
+   * @param {string} [reason]
+   */
+  PeerGroups.Host.prototype.kick = function(clientId, reason){
+    var m = this._members[clientId];
+    if (!m) return;
+    this._send(m.conn, {type:'kicked', reason:reason||'kicked'});
+    m.conn.close();
+    delete this._members[clientId];
+    this.emit('memberLeft', clientId);
+    this._broadcastMemberList();
+  };
+
+  /**
+   * Ban a member (cannot rejoin)
+   * @param {string} clientId
+   */
+  PeerGroups.Host.prototype.ban = function(clientId){
+    this._banned.add(clientId);
+    this.kick(clientId, 'banned');
+  };
+
+  /**
+   * Send a private message to one member
+   * @param {string} clientId
+   * @param {*} payload
+   */
+  PeerGroups.Host.prototype.sendTo = function(clientId, payload){
+    var m = this._members[clientId];
+    if (!m) throw new Error('sendTo: no such member');
+    this._send(m.conn, {
+      type:'message',
+      payload: payload,
+      fromId: this.groupId,
+      fromNick: this._ownNick||this.groupId
+    });
+  };
+
+  /**
+   * Broadcast to all
+   * @param {*} payload
+   */
+  PeerGroups.Host.prototype.broadcast = function(payload){
+    this._broadcast({
+      type:'message',
+      payload: payload,
+      fromId: this.groupId,
+      fromNick: this._ownNick||this.groupId
+    });
+  };
+
+  /**
+   * Change host's nickname (shown to clients)
+   * @param {string} nickname
+   */
+  PeerGroups.Host.prototype.setHostNickname = function(nickname){
+    if (typeof nickname!=='string' || !nickname.trim()) {
+      throw new Error('Invalid nickname');
+    }
+    this._ownNick = nickname.trim();
+  };
+
+  /**
+   * Get list of members
+   * @returns {Array<{id:string,nickname:string}>}
+   */
+  PeerGroups.Host.prototype.getMembers = function(){
+    return Object.entries(this._members).map(([id,m])=>({
+      id:id, nickname:m.nickname
+    }));
+  };
+
+  /**
+   * Shut down group
+   */
+  PeerGroups.Host.prototype.close = function(){
+    this.peer.destroy();
+    Object.keys(this._members).forEach(id=>this.kick(id,'shutdown'));
+    this._banned.clear();
+  };
+
+
+  // ------------------------------------------------------------------------------------------------
+  //                                     Client Class
+  // ------------------------------------------------------------------------------------------------
+
+  /**
+   * @class Client
+   * @memberof PeerGroups
+   * @extends Emitter
+   * @param {object} config
+   * @param {string} config.clientId    Your PeerJS ID
+   * @param {string} config.groupId     ID of group to join
+   * @param {string} [config.nickname]  Your display name
+   * @param {object} [config.options]   peerOptions
+   *
+   * Emits:
+   *  - 'open'(id)
+   *  - 'joined'()
+   *  - 'error'(err)
+   *  - 'message'(payload, fromId, fromNick)
+   *  - 'memberList'(Array<{id,nickname}>)
+   *  - 'kicked'(reason)
+   *  - 'disconnected'()
+   */
+  PeerGroups.Client = function(config){
+    if (!config || typeof config.clientId!=='string' || !config.groupId) {
+      throw new Error('Client: must supply clientId and groupId');
+    }
+    Emitter.call(this);
+    this.clientId  = config.clientId;
+    this.groupId   = config.groupId;
+    this.nickname  = (config.nickname||config.clientId).trim();
+    this.peer      = new Peer(this.clientId, config.options||{});
+    this.conn      = null;
+    this._queue    = [];
+    this._joined   = false;
+
+    var self = this;
+    this.peer.on('open', id=>self.emit('open',id));
+    this.peer.on('error',e=>self.emit('error',e));
+  };
+  PeerGroups.Client.prototype = Object.create(Emitter.prototype);
+  PeerGroups.Client.prototype.constructor = PeerGroups.Client;
+
+  /**
+   * Join the group
+   * @returns {Promise<void>}
+   */
+  PeerGroups.Client.prototype.join = function(){
+    var self = this;
+    return new Promise(function(resolve,reject){
+      if (self._joined) return reject(new Error('Already joined'));
+      self.conn = self.peer.connect(self.groupId, {reliable:true});
+      self.conn.on('open', ()=> self._flush());
+      self.conn.on('data', d=> self._onData(d, resolve, reject));
+      self.conn.on('close', ()=> {
+        self._joined = false;
+        self.emit('disconnected');
+      });
+      // send join request
+      self._send({type:'joinRequest', nickname:self.nickname});
+    });
+  };
+
+  PeerGroups.Client.prototype._onData = function(data, resolve, reject){
+    switch(data.type){
+      case 'joinAccepted':
+        this._joined = true;
+        this.emit('joined');
+        resolve();
+        break;
+      case 'joinRejected':
+        reject(new Error(data.reason));
+        this.conn.close();
+        break;
+      case 'message':
+        this.emit('message', data.payload, data.fromId, data.fromNick);
+        break;
+      case 'memberList':
+        this.emit('memberList', data.members);
+        break;
+      case 'kicked':
+        this.emit('kicked', data.reason);
+        this.conn.close();
+        break;
+      default:
+        break;
+    }
+  };
+
+  /**
+   * Send a group message
+   * @param {*} payload
+   */
+  PeerGroups.Client.prototype.send = function(payload){
+    if (!this._joined) {
+      throw new Error('Not joined yet');
+    }
+    this._send({type:'message', payload:payload});
+  };
+
+  /**
+   * Send a private message (host only)
+   * @param {*} payload
+   */
+  PeerGroups.Client.prototype.sendToHost = function(payload){
+    this.send(payload);
+  };
+
+  /**
+   * Change your nickname
+   * @param {string} newNick
+   */
+  PeerGroups.Client.prototype.changeNickname = function(newNick){
+    if (typeof newNick!=='string' || !newNick.trim()) {
+      throw new Error('Invalid nickname');
+    }
+    this.nickname = newNick.trim();
+    this._send({type:'nicknameChange', nickname:this.nickname});
+  };
+
+  PeerGroups.Client.prototype._send = function(msg){
+    if (this.conn && this.conn.open) {
+      this.conn.send(msg);
+    } else {
+      this._queue.push(msg);
+    }
+  };
+  PeerGroups.Client.prototype._flush = function(){
+    while(this._queue.length) this.conn.send(this._queue.shift());
+  };
+
+  /**
+   * Leave the group
+   */
+  PeerGroups.Client.prototype.leave = function(){
+    if (this.conn) this.conn.close();
+    this._joined = false;
+  };
+
+  /**
+   * Shutdown completely
+   */
+  PeerGroups.Client.prototype.close = function(){
+    this.leave();
+    this.peer.destroy();
+  };
+
+
+  // ------------------------------------------------------------------------------------------------
+  //                                     Bot Class
+  // ------------------------------------------------------------------------------------------------
+
+  /**
+   * @class Bot
+   * @memberof PeerGroups
+   * @extends PeerGroups.Client
+   * @param {object} config  same as Client
+   *
+   * on('message',...) is already wired to parse "!cmd"
+   */
+  PeerGroups.Bot = function(config){
+    PeerGroups.Client.call(this, config);
+    this._commands = {};
+    this.on('message', (msg, fromId, fromNick)=>{
+      if (typeof msg!=='string') return;
+      if (!msg.startsWith('!')) return;
+      var parts = msg.slice(1).trim().split(/\s+/);
+      var cmd   = parts.shift().toLowerCase();
+      var fn    = this._commands[cmd];
+      if (fn) {
+        try { fn(parts, fromId, fromNick, replyText=>this.send(replyText)); }
+        catch(e){ console.error('Bot handler error', e); }
+      }
+    });
+  };
+  PeerGroups.Bot.prototype = Object.create(PeerGroups.Client.prototype);
+  PeerGroups.Bot.prototype.constructor = PeerGroups.Bot;
+
+  /**
+   * Register a command
+   * @param {string} cmdName
+   * @param {function(string[],string,string,function)} handler
+   *   handler(args, fromId, fromNick, reply)
+   */
+  PeerGroups.Bot.prototype.registerCommand = function(cmdName, handler){
+    if (typeof cmdName!=='string' || typeof handler!=='function') {
+      throw new Error('Invalid command registration');
+    }
+    this._commands[cmdName.toLowerCase()] = handler;
+  };
+
+  // expose
+  window.PeerGroups = PeerGroups;
+
+})(window);
