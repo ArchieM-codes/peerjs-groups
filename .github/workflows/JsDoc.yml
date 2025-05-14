@@ -1,0 +1,41 @@
+name: Generate and Deploy JSDoc
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  jsdoc:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install JSDoc and dependencies
+        run: |
+          npm install jsdoc -g
+          npm install minami
+
+      - name: Generate JSDoc
+        run: |
+          jsdoc -c jsdoc.conf.json
+          # jsdoc -d doc ./ -t ./node_modules/minami
+
+      - name: Move generated documentation to /doc
+        run: |
+          mkdir -p doc
+          mv out/* doc/
+
+      - name: Commit and Push Documentation
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: 'docs(jsdoc): Update JSDoc documentation'
+          repository: .
+          branch: ${{ github.head_ref || github.ref_name }}
