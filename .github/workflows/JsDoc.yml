@@ -9,8 +9,7 @@ jobs:
   jsdoc:
     runs-on: ubuntu-latest
     permissions:
-      contents: write, read
-      # Required for pushing changes
+      contents: write, read  # Required for pushing changes
 
     steps:
       - name: Checkout Repository
@@ -33,7 +32,7 @@ jobs:
         run: |
           jsdoc -d doc src/peerjs-groups.js -t ./node_modules/minami
 
-      - name: Debug 
+      - name: Debug List files in doc directory AFTER jsdoc
         run: |
           ls -la doc/
 
@@ -49,3 +48,4 @@ jobs:
       - name: Debug Check Git config
         run: |
           git config --list
+
