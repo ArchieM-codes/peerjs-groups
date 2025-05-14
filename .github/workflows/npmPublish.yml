@@ -125,7 +125,7 @@ jobs:
 
       - name: Publish package
         if: steps.determine-version.outputs.skip_version_bump != 'true'
-        run: cd dist && npm publish --access public
+        run: npm publish --access public
 
       - name: Create Release
         env:
