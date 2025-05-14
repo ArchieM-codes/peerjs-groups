@@ -1,6 +1,28 @@
 {
+  "name": "peerjs-groups",
+  "version": "0.1.0-alpha",
+  "description": "A js library to facilitate the conenction of multiple peers via peerjs",
+  "main": "peerjs-groups.min.js",  
+  "keywords": [
+    "webRTC",
+    "signalling",
+    "peerjs",
+    "group",
+    "chat"
+  ],
+  "author": "Volcar144 <futuretech.coder4@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArchieM-codes/peerjs-groups.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ArchieM-codes/peerjs-groups/issues"
+  },
+  "homepage": "https://github.com/ArchieM-codes/peerjs-groups#readme",
   "dependencies": {
     "minami": "^1.2.3",
     "taffydb": "^2.7.3"
   }
+}
 }
