@@ -2,15 +2,13 @@
 <html>
 <head>
   <title>Peer Chat</title>
-  <script src="../lib/peer.js"></script>
 </head>
 <body>
   <ul id="log"></ul>
   <input id="input" placeholder="Type…">
   <button id="send">Send</button>
-
-  <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
-  <script src="peer-group.js"></script>
+    <script src="../lib/peer.js"></script>
+  <script src="../src/peerjs-groups.js"></script>
   <script>
     const log = msg=> {
       let li = document.createElement('li');
