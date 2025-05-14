@@ -9,9 +9,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Required for creating releases
       packages: write
-      #pull-requests: write # NO LONGER NEEDED. Using PAT
 
     steps:
       - name: Checkout repository
@@ -46,6 +45,7 @@ jobs:
       - name: Extract Version from Commit Message (if present)
         id: extract-version
         run: |
+          # Extract version from commit message (e.g., "chore: Update dist files v1.2.3")
           VERSION=$(echo "${{ steps.commit-message.outputs.commit_message }}" | grep -o -E "v[0-9]+\.[0-9]+\.[0-9]+$")
 
           if [[ -n "$VERSION" ]]; then
@@ -109,7 +109,7 @@ jobs:
         with:
           token: ${{ secrets.PAT }}  # Use PAT instead of GITHUB_TOKEN
           commit-message: "chore: Bump version for release"
-          title: "Bump version for release"
+          title: "chore: Bump version for release"
           body: "Automated version bump for a new release."
           branch: release-version-bump
           base: main
@@ -122,13 +122,33 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish package
+      - name: Check if Package Exists
+        id: check-package
         if: steps.determine-version.outputs.skip_version_bump != 'true'
+        run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
+          npm view "$PACKAGE_NAME" > /dev/null 2>&1
+          if [ $? -ne 0 ]; then
+            echo "package_exists=false" >> $GITHUB_OUTPUT
+            echo "Package '$PACKAGE_NAME' does not exist on npm."
+          else
+            echo "package_exists=true" >> $GITHUB_OUTPUT
+            echo "Package '$PACKAGE_NAME' already exists on npm."
+          fi
+
+      - name: Create Package on npm (if it doesn't exist)
+        if: steps.determine-version.outputs.skip_version_bump != 'true' && steps.check-package.outputs.package_exists == 'false'
+        working-directory: ${{ github.workspace }}
+        run: cd dist && npm publish --access public
+
+      - name: Publish package
+        if: steps.determine-version.outputs.skip_version_bump != 'true' && steps.check-package.outputs.package_exists == 'true'
+        working-directory: ${{ github.workspace }}
         run: cd dist && npm publish --access public
 
       - name: Create Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} #You can now use the github token!
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         if: ${{ steps.determine-version.outputs.skip_version_bump != 'true' && github.event_name == 'push' }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
