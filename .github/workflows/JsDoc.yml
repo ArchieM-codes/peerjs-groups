@@ -22,6 +22,7 @@ jobs:
         run: |
           npm install jsdoc -g
           npm install minami
+          npm install taffydb # add this line to install taffydb
 
       - name: Generate JSDoc
         run: |
