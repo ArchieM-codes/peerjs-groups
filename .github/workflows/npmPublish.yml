@@ -65,11 +65,15 @@ jobs:
             echo "next_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           fi
 
-      - name: Update package.json versions and commit
+      - name: Configure Git User
         if: steps.determine-version.outputs.skip_version_bump != 'true'
         run: |
           git config --local user.email "futuretech.coder4@gmail.com"
           git config --local user.name "volcar144"
+
+      - name: Update package.json versions and commit
+        if: steps.determine-version.outputs.skip_version_bump != 'true'
+        run: |
           npm version "${{ steps.determine-version.outputs.next_version }}" --no-git-tag-version
           git add package.json
           git commit -m "chore: Bump version to ${{ steps.determine-version.outputs.next_version }}"
