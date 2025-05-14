@@ -27,9 +27,11 @@ jobs:
             echo "::set-output name=should_publish::true"
           else
             echo "::set-output name=should_publish::false"
+            echo "No commit with [publish] found. Skipping release and npm publish."
           fi
 
-      - name: Publish Release
+      - name: Create Release
+        if: steps.check_publish.outputs.should_publish == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed for creating releases
         run: |
@@ -60,5 +62,4 @@ jobs:
         run: |
           npm ci
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
-          cd dist && npm publish --access public
-
+          npm publish --access public
