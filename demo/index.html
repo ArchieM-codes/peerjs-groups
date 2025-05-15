@@ -88,7 +88,7 @@
 
         async function loadPeerGroups() {
             try {
-                const module = await import('./src/peergroups.js'); // Adjust the path!
+                const module = await import('./src/peerjs-groups.js'); // Adjust the path!
                 PeerGroups = module;
             } catch (error) {
                 console.error("Failed to load PeerGroups:", error);
