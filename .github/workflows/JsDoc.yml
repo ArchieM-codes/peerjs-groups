@@ -31,7 +31,7 @@ jobs:
 
       - name: Generate JSDoc
         run: |
-          jsdoc -d doc src/peerjs-groups.js -t ./node_modules/minami
+          jsdoc -d doc dist/peerjs-groups.js -t ./node_modules/minami
 
       - name: Debug List files in doc directory AFTER jsdoc
         run: |
