@@ -45,7 +45,7 @@ const PeerGroupEvents = Object.freeze({
 
 /**
  * Priority-based event listener.
- * @class
+ * @class EventListener
  */
 class EventListener {
   /**
@@ -63,7 +63,7 @@ class EventListener {
 
 /**
  * Enhanced emitter using EventListener instances.
- * @class
+ * @class AdvancedEmitter
  */
 class AdvancedEmitter {
   constructor() {
@@ -125,7 +125,9 @@ class AdvancedEmitter {
 
 /**
  * Base class for Host, Client, Bot.
+ * @class PeerGroupsBase
  * @extends AdvancedEmitter
+ *
  */
 class PeerGroupsBase extends AdvancedEmitter {
   constructor() {
