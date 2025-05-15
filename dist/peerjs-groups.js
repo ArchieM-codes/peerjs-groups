@@ -45,7 +45,7 @@ const PeerGroupEvents = Object.freeze({
 
 /**
  * Priority-based event listener.
- * @class EventListener
+ * @class
  */
 class EventListener {
   /**
@@ -63,7 +63,7 @@ class EventListener {
 
 /**
  * Enhanced emitter using EventListener instances.
- * @class AdvancedEmitter
+ * @class
  */
 class AdvancedEmitter {
   constructor() {
@@ -125,7 +125,7 @@ class AdvancedEmitter {
 
 /**
  * Base class for Host, Client, Bot.
- * @class PeerGroupsBase
+ * @class 
  * @extends AdvancedEmitter
  *
  */
@@ -136,7 +136,8 @@ class PeerGroupsBase extends AdvancedEmitter {
 }
 
 /**
- * @class Host
+ * The group host class for groups
+ * @class 
  * @extends PeerGroupsBase
  * @fires PeerGroupEvents.*
  */
@@ -342,7 +343,8 @@ class Host extends PeerGroupsBase {
 }
 
 /**
- * @class Client
+ * The person on the recieving end of the group connection
+ * @class 
  * @extends PeerGroupsBase
  * @fires PeerGroupEvents.*
  */
@@ -463,7 +465,7 @@ class Client extends PeerGroupsBase {
 }
 
 /**
- * @class Bot
+ * @class
  * @extends Client
  * A bot that processes slash commands and auto-responds or emits.
  */
