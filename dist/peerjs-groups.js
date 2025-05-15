@@ -1,7 +1,5 @@
 /**
  * @module PeerGroups
- * A robust peer-to-peer group chat library with fine-grained event handling,
- * private messaging, bot integration, and XSS-safe message processing.
  */
 
 /**
