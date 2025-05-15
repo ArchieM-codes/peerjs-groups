@@ -779,6 +779,15 @@ Host.prototype.setupAdmin = function(secret){
 };
 
 // Export the module for node or browser
+// at the end of peergroups.js
+
+// Export for Node.js (using module.exports if available)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { escapeHTML, PeerGroupEvents, EventListener, AdvancedEmitter, Host, Client, Bot, PeerAdmin };
 }
+
+// Expose globally for browsers (if window is defined)
+if (typeof window !== 'undefined') {
+  window.PeerGroups = { escapeHTML, PeerGroupEvents, EventListener, AdvancedEmitter, Host, Client, Bot, PeerAdmin };
+}
+
