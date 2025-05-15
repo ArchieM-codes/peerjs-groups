@@ -1,5 +1,7 @@
 /**
  * @module PeerGroups
+ * A robust peer-to-peer group chat library with fine-grained event handling,
+ * private messaging, bot integration, and XSS-safe message processing, moderation and peer admin
  */
 
 /**
@@ -38,7 +40,8 @@ const PeerGroupEvents = Object.freeze({
   KICKED: 'kicked',
   BANNED: 'banned',
   UNBANNED: 'unbanned',
-  SHUTDOWN: 'shutdown'
+  SHUTDOWN: 'shutdown',
+  MESSAGE_CENSORED: 'messageCensored'
 });
 
 /**
@@ -122,10 +125,8 @@ class AdvancedEmitter {
 }
 
 /**
- * Base class for Host, Client, Bot.
- * @class 
+ * Base class for Host, Client, Bot and PeerAdmin
  * @extends AdvancedEmitter
- *
  */
 class PeerGroupsBase extends AdvancedEmitter {
   constructor() {
@@ -134,8 +135,7 @@ class PeerGroupsBase extends AdvancedEmitter {
 }
 
 /**
- * The group host class for groups
- * @class 
+ * @class Host
  * @extends PeerGroupsBase
  * @fires PeerGroupEvents.*
  */
@@ -143,8 +143,10 @@ class Host extends PeerGroupsBase {
   /**
    * @param {string} groupId
    * @param {object} [options]
+   * @param {object} [moderationOptions] Options to configure moderation
+   * @param {Array<string>} [moderationOptions.bannedWords] List of words to censor
    */
-  constructor(groupId, options = {}) {
+  constructor(groupId, options = {}, moderationOptions = {}) {
     super();
     this.groupId = groupId;
     this.peer = new Peer(groupId, options);
@@ -152,6 +154,10 @@ class Host extends PeerGroupsBase {
     this._members = new Map();
     /** @type {Set<string>} */
     this._banned = new Set();
+
+    //Moderation Feature
+    this.moderationOptions = moderationOptions;
+    this.bannedWords = new Set(moderationOptions.bannedWords || []);
 
     this.peer.on('open', id => this.emit(PeerGroupEvents.OPEN, id));
     this.peer.on('error', err => this.emit(PeerGroupEvents.ERROR, err));
@@ -188,7 +194,14 @@ class Host extends PeerGroupsBase {
 
       case 'message':
         {
-          const msg = escapeHTML(data.payload);
+          let msg = escapeHTML(data.payload);
+          if (this.bannedWords.size > 0) {
+            const originalMessage = msg;
+            msg = this._censorMessage(msg);
+            if (msg !== originalMessage) {
+              this.emit(PeerGroupEvents.MESSAGE_CENSORED, originalMessage, msg, clientId);
+            }
+          }
           this.emit(PeerGroupEvents.MESSAGE, msg, clientId, this._members.get(clientId)?.nickname);
           this._broadcast({ type: 'message', payload: msg }, clientId);
         }
@@ -196,7 +209,14 @@ class Host extends PeerGroupsBase {
 
       case 'privateMessage':
         {
-          const msg = escapeHTML(data.payload);
+          let msg = escapeHTML(data.payload);
+          if (this.bannedWords.size > 0) {
+            const originalMessage = msg;
+            msg = this._censorMessage(msg);
+            if (msg !== originalMessage) {
+              this.emit(PeerGroupEvents.MESSAGE_CENSORED, originalMessage, msg, clientId);
+            }
+          }
           const to = data.to;
           this.emit(PeerGroupEvents.PRIVATE_MESSAGE, msg, clientId, to);
           this._sendTo(to, { type: 'privateMessage', payload: msg, from: clientId });
@@ -279,7 +299,14 @@ class Host extends PeerGroupsBase {
    * @param {string} text
    */
   send(text) {
-    const msg = escapeHTML(text);
+    let msg = escapeHTML(text);
+    if (this.bannedWords.size > 0) {
+      const originalMessage = msg;
+      msg = this._censorMessage(msg);
+      if (msg !== originalMessage) {
+        this.emit(PeerGroupEvents.MESSAGE_CENSORED, originalMessage, msg, this.peer.id);
+      }
+    }
     this._broadcast({ type: 'message', payload: msg });
     this.emit(PeerGroupEvents.MESSAGE, msg, this.peer.id, '(host)');
   }
@@ -290,7 +317,14 @@ class Host extends PeerGroupsBase {
    * @param {string} text
    */
   sendPrivate(targetId, text) {
-    const msg = escapeHTML(text);
+    let msg = escapeHTML(text);
+    if (this.bannedWords.size > 0) {
+      const originalMessage = msg;
+      msg = this._censorMessage(msg);
+      if (msg !== originalMessage) {
+        this.emit(PeerGroupEvents.MESSAGE_CENSORED, originalMessage, msg, this.peer.id);
+      }
+    }
     this._sendTo(targetId, { type: 'privateMessage', payload: msg, from: this.peer.id });
     this.emit(PeerGroupEvents.PRIVATE_MESSAGE, msg, this.peer.id, targetId);
   }
@@ -329,6 +363,36 @@ class Host extends PeerGroupsBase {
   }
 
   /**
+   * Add a banned word.
+   * @param {string} word
+   */
+  addBannedWord(word) {
+    this.bannedWords.add(word);
+  }
+
+  /**
+   * Remove a banned word.
+   * @param {string} word
+   */
+  removeBannedWord(word) {
+    this.bannedWords.delete(word);
+  }
+
+  /**
+   * Censor a message if it contains banned words.
+   * @param {string} message
+   * @returns {string}
+   */
+  _censorMessage(message) {
+    let censoredMessage = message;
+    for (const word of this.bannedWords) {
+      const regex = new RegExp(`\\b${word}\\b`, 'gi');
+      censoredMessage = censoredMessage.replace(regex, '****');
+    }
+    return censoredMessage;
+  }
+
+  /**
    * Shut down the host and disconnect all.
    */
   close() {
@@ -341,8 +405,7 @@ class Host extends PeerGroupsBase {
 }
 
 /**
- * The person on the recieving end of the group connection
- * @class 
+ * @class Client
  * @extends PeerGroupsBase
  * @fires PeerGroupEvents.*
  */
@@ -463,7 +526,7 @@ class Client extends PeerGroupsBase {
 }
 
 /**
- * @class
+ * @class Bot
  * @extends Client
  * A bot that processes slash commands and auto-responds or emits.
  */
@@ -499,7 +562,222 @@ class Bot extends Client {
   }
 }
 
+/**
+ * @class PeerAdmin
+ * @extends PeerGroupsBase
+ * Allows administrative control over peers within a group.  Must authenticate.
+ */
+class PeerAdmin extends PeerGroupsBase {
+  /**
+   * @param {string} adminId
+   * @param {string} groupId
+   * @param {string} secret Admin secret to authenticate
+   * @param {object} [options]
+   */
+  constructor(adminId, groupId, secret, options = {}) {
+    super();
+    this.adminId = adminId;
+    this.groupId = groupId;
+    this.secret = secret;
+    this.peer = new Peer(adminId, options);
+    this.conn = null;
+    this.authenticated = false;
+
+    this.peer.on('open', id => this.emit(PeerGroupEvents.OPEN, id));
+    this.peer.on('error', err => this.emit(PeerGroupEvents.ERROR, err));
+  }
+
+  /**
+   * Connects to the host and attempts to authenticate as an administrator.
+   * @param {string} hostId The Peer ID of the host to connect to.
+   */
+  connect(hostId) {
+    this.conn = this.peer.connect(hostId);
+    this.conn.on('open', () => {
+      this.emit(PeerGroupEvents.CONNECT, hostId);
+      this._send({ type: 'adminAuth', secret: this.secret });
+    });
+    this.conn.on('data', data => this._onData(data));
+    this.conn.on('close', () => {
+      this.authenticated = false;
+            this.emit(PeerGroupEvents.DISCONNECT, hostId);
+    });
+  }
+
+  _onData(raw) {
+    const data = raw && raw.type ? raw : {};
+
+    switch (data.type) {
+      case 'adminAuthSuccess':
+        this.authenticated = true;
+        this.emit('adminAuthSuccess');
+        break;
+
+      case 'adminAuthFailed':
+        this.authenticated = false;
+        this.emit('adminAuthFailed', data.reason);
+        this.conn.close();
+        break;
+
+      case 'memberList':
+        this.emit(PeerGroupEvents.MEMBER_LIST, data.list);
+        break;
+
+      default:
+        this.emit(PeerGroupEvents.ERROR, new Error(`Unknown data type: ${data.type}`));
+    }
+  }
+
+  /**
+   * Kicks a user from the peer group.  Requires admin authentication.
+   * @param {string} targetClientId The Peer ID of the client to kick.
+   * @param {string} reason The reason for the kick.
+   */
+  kickClient(targetClientId, reason) {
+    if (!this.authenticated) {
+      this.emit(PeerGroupEvents.ERROR, new Error('Admin not authenticated'));
+      return;
+    }
+    this._send({ type: 'adminKickClient', targetClientId, reason });
+  }
+
+  /**
+   * Bans a user from the peer group. Requires admin authentication.
+   * @param {string} targetClientId The Peer ID of the client to ban.
+   */
+  banClient(targetClientId) {
+    if (!this.authenticated) {
+      this.emit(PeerGroupEvents.ERROR, new Error('Admin not authenticated'));
+      return;
+    }
+    this._send({ type: 'adminBanClient', targetClientId });
+  }
+
+  /**
+   * Unbans a user from the peer group. Requires admin authentication.
+   * @param {string} targetClientId The Peer ID of the client to unban.
+   */
+  unbanClient(targetClientId) {
+    if (!this.authenticated) {
+      this.emit(PeerGroupEvents.ERROR, new Error('Admin not authenticated'));
+      return;
+    }
+    this._send({ type: 'adminUnbanClient', targetClientId });
+  }
+
+  /**
+   * Adds a banned word to the host's moderation list. Requires admin authentication.
+   * @param {string} word The word to ban.
+   */
+  addBannedWord(word) {
+    if (!this.authenticated) {
+      this.emit(PeerGroupEvents.ERROR, new Error('Admin not authenticated'));
+      return;
+    }
+    this._send({ type: 'adminAddBannedWord', word });
+  }
+
+  /**
+   * Removes a banned word from the host's moderation list. Requires admin authentication.
+   * @param {string} word The word to unban.
+   */
+  removeBannedWord(word) {
+    if (!this.authenticated) {
+      this.emit(PeerGroupEvents.ERROR, new Error('Admin not authenticated'));
+      return;
+    }
+    this._send({ type: 'adminRemoveBannedWord', word });
+  }
+
+  /**
+   * Shuts down the peer group. Requires admin authentication.
+   */
+  shutdownGroup() {
+    if (!this.authenticated) {
+      this.emit(PeerGroupEvents.ERROR, new Error('Admin not authenticated'));
+      return;
+    }
+    this._send({ type: 'adminShutdownGroup' });
+  }
+
+  /**
+   * Disconnects from the host.
+   */
+  disconnect() {
+    if (this.conn) {
+      this.conn.close();
+    }
+  }
+
+  _send(data) {
+    try {
+      this.conn.send(data);
+    } catch (err) {
+      this.emit(PeerGroupEvents.ERROR, err);
+    }
+  }
+}
+
+// ----- Host Modifications -----
+
+// Extending Host class to handle admin requests
+Host.prototype._onData = function(conn, raw) {
+  const clientId = conn.peer;
+  const data = raw && raw.type ? raw : {};
+  switch (data.type) {
+    // ... (Previous cases remain the same)
+
+    case 'adminAuth':
+      if (data.secret === this.adminSecret) {
+        this._send(conn, { type: 'adminAuthSuccess' });
+        this.emit('adminAuthenticated', clientId);
+      } else {
+        this._send(conn, { type: 'adminAuthFailed', reason: 'Invalid secret' });
+        conn.close();
+        this.emit('adminAuthenticationFailed', clientId);
+      }
+      break;
+
+    case 'adminKickClient':
+      this.kick(data.targetClientId, data.reason || 'Kicked by admin');
+      break;
+
+    case 'adminBanClient':
+      this.ban(data.targetClientId);
+      break;
+
+    case 'adminUnbanClient':
+      this.unban(data.targetClientId);
+      break;
+
+    case 'adminAddBannedWord':
+      this.addBannedWord(data.word);
+      break;
+
+    case 'adminRemoveBannedWord':
+      this.removeBannedWord(data.word);
+      break;
+
+    case 'adminShutdownGroup':
+      this.close();
+      break;
+
+    default:
+      PeerGroupsBase.prototype._onData.call(this, conn, raw);  // Use the base class handler for other types
+      break;
+  }
+};
+
+/**
+ *  Set up the host's admin functionality.
+ *  @param {string} secret
+ */
+Host.prototype.setupAdmin = function(secret){
+  this.adminSecret = secret;
+  return this;
+};
+
 // Export the module for node or browser
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { escapeHTML, PeerGroupEvents, EventListener, AdvancedEmitter, Host, Client, Bot };
+  module.exports = { escapeHTML, PeerGroupEvents, EventListener, AdvancedEmitter, Host, Client, Bot, PeerAdmin };
 }
