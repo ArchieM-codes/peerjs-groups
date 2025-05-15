@@ -1,462 +1,503 @@
-;(function(window){
-  'use strict';
+/**
+ * @module PeerGroups
+ * A robust peer-to-peer group chat library with fine-grained event handling,
+ * private messaging, bot integration, and XSS-safe message processing.
+ */
 
-  if (typeof Peer === 'undefined') {
-    throw new Error('Peer.js must be included before peer-group.js');
+/**
+ * Escape HTML special characters to prevent XSS attacks.
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeHTML(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Known event types for PeerGroups components.
+ * @readonly
+ * @enum {string}
+ */
+const PeerGroupEvents = Object.freeze({
+  OPEN: 'open',
+  ERROR: 'error',
+  CONNECT: 'connect',
+  DISCONNECT: 'disconnect',
+  JOIN_REQUEST: 'joinRequest',
+  JOIN_APPROVED: 'joinApproved',
+  JOIN_REJECTED: 'joinRejected',
+  MEMBER_JOINED: 'memberJoined',
+  MEMBER_LEFT: 'memberLeft',
+  MEMBER_LIST: 'memberList',
+  MESSAGE: 'message',
+  PRIVATE_MESSAGE: 'privateMessage',
+  NICKNAME_CHANGED: 'nicknameChanged',
+  KICKED: 'kicked',
+  BANNED: 'banned',
+  UNBANNED: 'unbanned',
+  SHUTDOWN: 'shutdown'
+});
+
+/**
+ * Priority-based event listener.
+ * @class
+ */
+class EventListener {
+  /**
+   * @param {string} eventType
+   * @param {Function} callback
+   * @param {number} [priority=0]
+   */
+  constructor(eventType, callback, priority = 0) {
+    this.eventType = eventType;
+    this.callback = callback;
+    this.priority = priority;
+    this.active = true;
+  }
+}
+
+/**
+ * Enhanced emitter using EventListener instances.
+ * @class
+ */
+class AdvancedEmitter {
+  constructor() {
+    /** @type {Map<string, EventListener[]>} */
+    this._listeners = new Map();
   }
 
   /**
-   * Simple EventEmitter
-   * @ignore
+   * Add a listener.
+   * @param {EventListener} listener
+   * @returns {this}
    */
-  function Emitter(){
-    this._events = {};
+  addListener(listener) {
+    if (!listener.active) return this;
+    const arr = this._listeners.get(listener.eventType) || [];
+    arr.push(listener);
+    arr.sort((a, b) => b.priority - a.priority);
+    this._listeners.set(listener.eventType, arr);
+    return this;
   }
-  Emitter.prototype.on = function(evt, fn){
-    if (typeof fn !== 'function') return;
-    (this._events[evt] || (this._events[evt]=[])).push(fn);
-    return this;
-  };
-  Emitter.prototype.off = function(evt, fn){
-    if (!this._events[evt]) return this;
-    this._events[evt] = this._events[evt].filter(f=>f!==fn);
-    return this;
-  };
-  Emitter.prototype.emit = function(evt, ...args){
-    (this._events[evt]||[]).slice().forEach(fn=>{
-      try{ fn.apply(this, args); }
-      catch(e){ console.error('Event handler error', e); }
-    });
-  };
 
   /**
-   * @namespace PeerGroups
+   * Remove a listener or all listeners for an event.
+   * @param {string} eventType
+   * @param {Function} [callback]
+   * @returns {this}
    */
-  var PeerGroups = {};
-
-  // ------------------------------------------------------------------------------------------------
-  //                                     Host Class
-  // ------------------------------------------------------------------------------------------------
+  removeListener(eventType, callback) {
+    if (!this._listeners.has(eventType)) return this;
+    if (!callback) {
+      this._listeners.delete(eventType);
+    } else {
+      const filtered = this._listeners
+        .get(eventType)
+        .filter(l => l.callback !== callback);
+      this._listeners.set(eventType, filtered);
+    }
+    return this;
+  }
 
   /**
-   * @class Host
-   * @memberof PeerGroups
-   * @extends Emitter
-   * @param {string} groupId        Unique ID for this group (PeerJS ID).
-   * @param {object} [options]      peerOptions for new Peer(...)
-   *
-   * Emits:
-   *  - 'open'(id)
-   *  - 'error'(err)
-   *  - 'joinRequest'(clientId, nickname, acceptFn, rejectFn)
-   *  - 'memberJoined'(clientId, nickname)
-   *  - 'memberLeft'(clientId)
-   *  - 'message'(payload, fromId, fromNick)
+   * Emit an event.
+   * @param {string} eventType
+   * @param  {...any} args
    */
-  PeerGroups.Host = function(groupId, options){
-    if (typeof groupId !== 'string' || !groupId) {
-      throw new Error('Host: groupId must be a non-empty string');
-    }
-    Emitter.call(this);
-    this.groupId   = groupId;
-    this.peer      = new Peer(groupId, options||{});
-    this._members  = {};   // clientId -> {conn, nickname}
-    this._banned   = new Set();
-    this._queues   = new WeakMap(); // conn -> [msgs]
-
-    this.peer.on('open', id   => this.emit('open', id));
-    this.peer.on('error',err  => this.emit('error', err));
-    this.peer.on('connection', conn => this._handleConn(conn));
-  };
-  PeerGroups.Host.prototype = Object.create(Emitter.prototype);
-  PeerGroups.Host.prototype.constructor = PeerGroups.Host;
-
-  PeerGroups.Host.prototype._handleConn = function(conn){
-    var self = this;
-    var clientId = conn.peer;
-    // auto‐reject banned
-    if (this._banned.has(clientId)) {
-      conn.on('open',()=>{
-        conn.send({type:'joinRejected', reason:'banned'});
-        conn.close();
-      });
-      return;
-    }
-    this._queues.set(conn, []);
-    conn.on('data', data => this._onData(conn, data));
-    conn.on('open', ()=> this._flush(conn));
-    conn.on('close',()=>{
-      if (self._members[clientId]) {
-        delete self._members[clientId];
-        self.emit('memberLeft', clientId);
-        self._broadcastMemberList();
+  emit(eventType, ...args) {
+    const listeners = this._listeners.get(eventType) || [];
+    for (const listener of listeners) {
+      if (listener.active) {
+        try {
+          listener.callback(...args);
+        } catch (err) {
+          console.error(`Error in listener for ${eventType}:`, err);
+        }
       }
-      self._queues.delete(conn);
-    });
-  };
+    }
+  }
+}
 
-  PeerGroups.Host.prototype._onData = function(conn, data){
-    if (!data || typeof data.type!=='string') return;
-    var clientId = conn.peer;
-    switch(data.type){
+/**
+ * Base class for Host, Client, Bot.
+ * @extends AdvancedEmitter
+ */
+class PeerGroupsBase extends AdvancedEmitter {
+  constructor() {
+    super();
+  }
+}
+
+/**
+ * @class Host
+ * @extends PeerGroupsBase
+ * @fires PeerGroupEvents.*
+ */
+class Host extends PeerGroupsBase {
+  /**
+   * @param {string} groupId
+   * @param {object} [options]
+   */
+  constructor(groupId, options = {}) {
+    super();
+    this.groupId = groupId;
+    this.peer = new Peer(groupId, options);
+    /** @type {Map<string, {conn: Peer.DataConnection, nickname: string}>} */
+    this._members = new Map();
+    /** @type {Set<string>} */
+    this._banned = new Set();
+
+    this.peer.on('open', id => this.emit(PeerGroupEvents.OPEN, id));
+    this.peer.on('error', err => this.emit(PeerGroupEvents.ERROR, err));
+    this.peer.on('connection', conn => this._onConnection(conn));
+  }
+
+  _onConnection(conn) {
+    const clientId = conn.peer;
+    conn.on('open', () => {
+      this.emit(PeerGroupEvents.CONNECT, clientId);
+      conn.on('data', data => this._onData(conn, data));
+      conn.on('close', () => this._onPeerClose(clientId));
+    });
+  }
+
+  _onData(conn, raw) {
+    const clientId = conn.peer;
+    const data = raw && raw.type ? raw : {};
+    switch (data.type) {
       case 'joinRequest':
-        var nick = typeof data.nickname==='string' && data.nickname.trim()
-                   ? data.nickname.trim() : clientId;
-        this.emit('joinRequest',
+        if (this._banned.has(clientId)) {
+          this._send(conn, { type: 'joinRejected', reason: 'banned' });
+          this.emit(PeerGroupEvents.BANNED, clientId);
+          return;
+        }
+        this.emit(
+          PeerGroupEvents.JOIN_REQUEST,
           clientId,
-          nick,
-          () => this._accept(conn, nick),
-          reason=> this._reject(conn, reason)
+          data.nickname,
+          () => this._approve(conn, data.nickname),
+          reason => this._reject(conn, reason)
         );
         break;
 
       case 'message':
-        if (!this._members[clientId]) return; // ignore if not accepted
-        this.emit('message', data.payload, clientId, this._members[clientId].nickname);
-        // broadcast to others
-        this._broadcast({
-          type:'message',
-          payload: data.payload,
-          fromId:   clientId,
-          fromNick: this._members[clientId].nickname
-        }, conn);
+        {
+          const msg = escapeHTML(data.payload);
+          this.emit(PeerGroupEvents.MESSAGE, msg, clientId, this._members.get(clientId)?.nickname);
+          this._broadcast({ type: 'message', payload: msg }, clientId);
+        }
+        break;
+
+      case 'privateMessage':
+        {
+          const msg = escapeHTML(data.payload);
+          const to = data.to;
+          this.emit(PeerGroupEvents.PRIVATE_MESSAGE, msg, clientId, to);
+          this._sendTo(to, { type: 'privateMessage', payload: msg, from: clientId });
+        }
         break;
 
       case 'nicknameChange':
-        if (!this._members[clientId]) return;
-        var old = this._members[clientId].nickname;
-        var neu = (typeof data.nickname==='string' && data.nickname.trim())
-                  ? data.nickname.trim() : old;
-        this._members[clientId].nickname = neu;
-        this.emit('nicknameChanged', clientId, old, neu);
-        this._broadcastMemberList();
+        {
+          const oldNick = this._members.get(clientId)?.nickname;
+          const newNick = escapeHTML(data.newNickname);
+          this._members.get(clientId).nickname = newNick;
+          this.emit(PeerGroupEvents.NICKNAME_CHANGED, clientId, oldNick, newNick);
+          this._broadcast({ type: 'nicknameChange', newNickname: newNick });
+        }
         break;
 
       default:
-        // ignore or extend
-        break;
+        this.emit(PeerGroupEvents.ERROR, new Error(`Unknown data type: ${data.type}`));
     }
-  };
+  }
 
-  PeerGroups.Host.prototype._accept = function(conn, nickname){
-    if (!conn.open) return;
-    var id = conn.peer;
-    this._members[id] = {conn:conn, nickname:nickname};
-    conn.send({type:'joinAccepted', nickname:this._ownNick||this.groupId});
-    this.emit('memberJoined', id, nickname);
-    this._broadcastMemberList();
-  };
+  _approve(conn, nickname) {
+    const clientId = conn.peer;
+    const safeNick = escapeHTML(nickname);
+    this._members.set(clientId, { conn, nickname: safeNick });
+    this._send(conn, { type: 'joinApproved', nickname: safeNick });
+    this.emit(PeerGroupEvents.JOIN_APPROVED, clientId, safeNick);
+    this.emit(PeerGroupEvents.MEMBER_JOINED, clientId, safeNick);
+    this._updateMemberList();
+  }
 
-  PeerGroups.Host.prototype._reject = function(conn, reason){
-    reason = reason||'rejected';
-    if (conn.open) conn.send({type:'joinRejected', reason:reason});
+  _reject(conn, reason) {
+    this._send(conn, { type: 'joinRejected', reason });
     conn.close();
-  };
+    this.emit(PeerGroupEvents.JOIN_REJECTED, conn.peer, reason);
+  }
 
-  PeerGroups.Host.prototype._broadcast = function(msg, exceptConn){
-    Object.values(this._members).forEach(m=>{
-      if (m.conn!==exceptConn) this._send(m.conn, msg);
-    });
-  };
+  _onPeerClose(clientId) {
+    const info = this._members.get(clientId);
+    if (info) {
+      this._members.delete(clientId);
+      this.emit(PeerGroupEvents.DISCONNECT, clientId);
+      this.emit(PeerGroupEvents.MEMBER_LEFT, clientId, info.nickname);
+      this._updateMemberList();
+    }
+  }
 
-  PeerGroups.Host.prototype._send = function(conn, msg){
-    var q = this._queues.get(conn);
-    if (conn.open) conn.send(msg);
-    else if (q) q.push(msg);
-  };
+  _broadcast(message, excludeId) {
+    for (const [id, { conn }] of this._members) {
+      if (id !== excludeId) {
+        this._send(conn, message);
+      }
+    }
+  }
 
-  PeerGroups.Host.prototype._flush = function(conn){
-    var q = this._queues.get(conn);
-    while(q && q.length) conn.send(q.shift());
-  };
+  _sendTo(targetId, message) {
+    const entry = this._members.get(targetId);
+    if (entry) {
+      this._send(entry.conn, message);
+    }
+  }
+
+  _send(conn, message) {
+    try {
+      conn.send(message);
+    } catch (err) {
+      this.emit(PeerGroupEvents.ERROR, err);
+    }
+  }
+
+  _updateMemberList() {
+    const list = Array.from(this._members.entries())
+      .map(([id, { nickname }]) => ({ id, nickname }));
+    this.emit(PeerGroupEvents.MEMBER_LIST, list);
+    this._broadcast({ type: 'memberList', list });
+  }
 
   /**
-   * Broadcast updated member list
-   * @private
+   * Send a broadcast message as host.
+   * @param {string} text
    */
-  PeerGroups.Host.prototype._broadcastMemberList = function(){
-    var list = Object.entries(this._members).map(([id,m])=>({
-      id:id, nickname:m.nickname
-    }));
-    this._broadcast({type:'memberList', members:list});
-  };
+  send(text) {
+    const msg = escapeHTML(text);
+    this._broadcast({ type: 'message', payload: msg });
+    this.emit(PeerGroupEvents.MESSAGE, msg, this.peer.id, '(host)');
+  }
 
   /**
-   * Kick a member
+   * Send a private message to a specific member.
+   * @param {string} targetId
+   * @param {string} text
+   */
+  sendPrivate(targetId, text) {
+    const msg = escapeHTML(text);
+    this._sendTo(targetId, { type: 'privateMessage', payload: msg, from: this.peer.id });
+    this.emit(PeerGroupEvents.PRIVATE_MESSAGE, msg, this.peer.id, targetId);
+  }
+
+  /**
+   * Kick a member out.
    * @param {string} clientId
    * @param {string} [reason]
    */
-  PeerGroups.Host.prototype.kick = function(clientId, reason){
-    var m = this._members[clientId];
-    if (!m) return;
-    this._send(m.conn, {type:'kicked', reason:reason||'kicked'});
-    m.conn.close();
-    delete this._members[clientId];
-    this.emit('memberLeft', clientId);
-    this._broadcastMemberList();
-  };
+  kick(clientId, reason = 'kicked') {
+    const entry = this._members.get(clientId);
+    if (entry) {
+      this._send(entry.conn, { type: 'kicked', reason });
+      entry.conn.close();
+      this.emit(PeerGroupEvents.KICKED, clientId, reason);
+    }
+  }
 
   /**
-   * Ban a member (cannot rejoin)
+   * Ban a member.
    * @param {string} clientId
    */
-  PeerGroups.Host.prototype.ban = function(clientId){
+  ban(clientId) {
     this._banned.add(clientId);
     this.kick(clientId, 'banned');
-  };
+    this.emit(PeerGroupEvents.BANNED, clientId);
+  }
 
   /**
-   * Send a private message to one member
+   * Unban a member.
    * @param {string} clientId
-   * @param {*} payload
    */
-  PeerGroups.Host.prototype.sendTo = function(clientId, payload){
-    var m = this._members[clientId];
-    if (!m) throw new Error('sendTo: no such member');
-    this._send(m.conn, {
-      type:'message',
-      payload: payload,
-      fromId: this.groupId,
-      fromNick: this._ownNick||this.groupId
-    });
-  };
+  unban(clientId) {
+    this._banned.delete(clientId);
+    this.emit(PeerGroupEvents.UNBANNED, clientId);
+  }
 
   /**
-   * Broadcast to all
-   * @param {*} payload
+   * Shut down the host and disconnect all.
    */
-  PeerGroups.Host.prototype.broadcast = function(payload){
-    this._broadcast({
-      type:'message',
-      payload: payload,
-      fromId: this.groupId,
-      fromNick: this._ownNick||this.groupId
-    });
-  };
+  close() {
+    for (const { conn } of this._members.values()) {
+      conn.close();
+    }
+    this.peer.destroy();
+    this.emit(PeerGroupEvents.SHUTDOWN);
+  }
+}
+
+/**
+ * @class Client
+ * @extends PeerGroupsBase
+ * @fires PeerGroupEvents.*
+ */
+class Client extends PeerGroupsBase {
+  /**
+   * @param {string} clientId
+   * @param {string} groupId
+   * @param {object} [options]
+   */
+  constructor(clientId, groupId, options = {}) {
+    super();
+    this.clientId = clientId;
+    this.groupId = groupId;
+    this.peer = new Peer(clientId, options);
+    this.conn = null;
+    this.nickname = null;
+
+    this.peer.on('open', id => this.emit(PeerGroupEvents.OPEN, id));
+    this.peer.on('error', err => this.emit(PeerGroupEvents.ERROR, err));
+  }
 
   /**
-   * Change host's nickname (shown to clients)
+   * Request to join a host.
+   * @param {string} hostId
    * @param {string} nickname
    */
-  PeerGroups.Host.prototype.setHostNickname = function(nickname){
-    if (typeof nickname!=='string' || !nickname.trim()) {
-      throw new Error('Invalid nickname');
-    }
-    this._ownNick = nickname.trim();
-  };
-
-  /**
-   * Get list of members
-   * @returns {Array<{id:string,nickname:string}>}
-   */
-  PeerGroups.Host.prototype.getMembers = function(){
-    return Object.entries(this._members).map(([id,m])=>({
-      id:id, nickname:m.nickname
-    }));
-  };
-
-  /**
-   * Shut down group
-   */
-  PeerGroups.Host.prototype.close = function(){
-    this.peer.destroy();
-    Object.keys(this._members).forEach(id=>this.kick(id,'shutdown'));
-    this._banned.clear();
-  };
-
-
-  // ------------------------------------------------------------------------------------------------
-  //                                     Client Class
-  // ------------------------------------------------------------------------------------------------
-
-  /**
-   * @class Client
-   * @memberof PeerGroups
-   * @extends Emitter
-   * @param {object} config
-   * @param {string} config.clientId    Your PeerJS ID
-   * @param {string} config.groupId     ID of group to join
-   * @param {string} [config.nickname]  Your display name
-   * @param {object} [config.options]   peerOptions
-   *
-   * Emits:
-   *  - 'open'(id)
-   *  - 'joined'()
-   *  - 'error'(err)
-   *  - 'message'(payload, fromId, fromNick)
-   *  - 'memberList'(Array<{id,nickname}>)
-   *  - 'kicked'(reason)
-   *  - 'disconnected'()
-   */
-  PeerGroups.Client = function(config){
-    if (!config || typeof config.clientId!=='string' || !config.groupId) {
-      throw new Error('Client: must supply clientId and groupId');
-    }
-    Emitter.call(this);
-    this.clientId  = config.clientId;
-    this.groupId   = config.groupId;
-    this.nickname  = (config.nickname||config.clientId).trim();
-    this.peer      = new Peer(this.clientId, config.options||{});
-    this.conn      = null;
-    this._queue    = [];
-    this._joined   = false;
-
-    var self = this;
-    this.peer.on('open', id=>self.emit('open',id));
-    this.peer.on('error',e=>self.emit('error',e));
-  };
-  PeerGroups.Client.prototype = Object.create(Emitter.prototype);
-  PeerGroups.Client.prototype.constructor = PeerGroups.Client;
-
-  /**
-   * Join the group
-   * @returns {Promise<void>}
-   */
-  PeerGroups.Client.prototype.join = function(){
-    var self = this;
-    return new Promise(function(resolve,reject){
-      if (self._joined) return reject(new Error('Already joined'));
-      self.conn = self.peer.connect(self.groupId, {reliable:true});
-      self.conn.on('open', ()=> self._flush());
-      self.conn.on('data', d=> self._onData(d, resolve, reject));
-      self.conn.on('close', ()=> {
-        self._joined = false;
-        self.emit('disconnected');
-      });
-      // send join request
-      self._send({type:'joinRequest', nickname:self.nickname});
+  join(hostId, nickname) {
+    this.nickname = escapeHTML(nickname);
+    this.conn = this.peer.connect(hostId);
+    this.conn.on('open', () => {
+      this.emit(PeerGroupEvents.CONNECT, hostId);
+      this._send({ type: 'joinRequest', nickname: this.nickname });
     });
-  };
+    this.conn.on('data', data => this._onData(data));
+    this.conn.on('close', () => this.emit(PeerGroupEvents.DISCONNECT, hostId));
+  }
 
-  PeerGroups.Client.prototype._onData = function(data, resolve, reject){
-    switch(data.type){
-      case 'joinAccepted':
-        this._joined = true;
-        this.emit('joined');
-        resolve();
+  _onData(raw) {
+    const data = raw && raw.type ? raw : {};
+    switch (data.type) {
+      case 'joinApproved':
+        this.emit(PeerGroupEvents.JOIN_APPROVED, this.peer.id, data.nickname);
         break;
       case 'joinRejected':
-        reject(new Error(data.reason));
-        this.conn.close();
+        this.emit(PeerGroupEvents.JOIN_REJECTED, data.reason);
         break;
       case 'message':
-        this.emit('message', data.payload, data.fromId, data.fromNick);
+        this.emit(PeerGroupEvents.MESSAGE, data.payload, data.from || this.conn.peer);
+        break;
+      case 'privateMessage':
+        this.emit(
+          PeerGroupEvents.PRIVATE_MESSAGE,
+          data.payload,
+          data.from || this.conn.peer
+        );
         break;
       case 'memberList':
-        this.emit('memberList', data.members);
+        this.emit(PeerGroupEvents.MEMBER_LIST, data.list);
         break;
       case 'kicked':
-        this.emit('kicked', data.reason);
+        this.emit(PeerGroupEvents.KICKED, data.reason);
+        this.conn.close();
+        break;
+      case 'shutdown':
+        this.emit(PeerGroupEvents.SHUTDOWN);
         this.conn.close();
         break;
       default:
-        break;
+        this.emit(PeerGroupEvents.ERROR, new Error(`Unknown data: ${data.type}`));
     }
-  };
+  }
 
   /**
-   * Send a group message
-   * @param {*} payload
+   * Send a group message.
+   * @param {string} text
    */
-  PeerGroups.Client.prototype.send = function(payload){
-    if (!this._joined) {
-      throw new Error('Not joined yet');
-    }
-    this._send({type:'message', payload:payload});
-  };
+  send(text) {
+    const msg = escapeHTML(text);
+    this._send({ type: 'message', payload: msg });
+  }
 
   /**
-   * Send a private message (host only)
-   * @param {*} payload
+   * Send a private message to another peer.
+   * @param {string} targetId
+   * @param {string} text
    */
-  PeerGroups.Client.prototype.sendToHost = function(payload){
-    this.send(payload);
-  };
+  sendPrivate(targetId, text) {
+    const msg = escapeHTML(text);
+    this._send({ type: 'privateMessage', payload: msg, to: targetId });
+  }
 
   /**
-   * Change your nickname
+   * Change your nickname.
    * @param {string} newNick
    */
-  PeerGroups.Client.prototype.changeNickname = function(newNick){
-    if (typeof newNick!=='string' || !newNick.trim()) {
-      throw new Error('Invalid nickname');
+  changeNickname(newNick) {
+    const nick = escapeHTML(newNick);
+    this.nickname = nick;
+    this._send({ type: 'nicknameChange', newNickname: nick });
+  }
+
+  /**
+   * Disconnect from host.
+   */
+  disconnect() {
+    if (this.conn) {
+      this.conn.close();
     }
-    this.nickname = newNick.trim();
-    this._send({type:'nicknameChange', nickname:this.nickname});
-  };
+  }
 
-  PeerGroups.Client.prototype._send = function(msg){
-    if (this.conn && this.conn.open) {
-      this.conn.send(msg);
-    } else {
-      this._queue.push(msg);
+  _send(data) {
+    try {
+      this.conn.send(data);
+    } catch (err) {
+      this.emit(PeerGroupEvents.ERROR, err);
     }
-  };
-  PeerGroups.Client.prototype._flush = function(){
-    while(this._queue.length) this.conn.send(this._queue.shift());
-  };
+  }
+}
+
+/**
+ * @class Bot
+ * @extends Client
+ * A bot that processes slash commands and auto-responds or emits.
+ */
+class Bot extends Client {
+  constructor(clientId, groupId, options = {}) {
+    super(clientId, groupId, options);
+    /** @type {Map<string, Function>} */
+    this._commands = new Map();
+    this.on(PeerGroupEvents.MESSAGE, (msg, from) => this._handleMessage(msg, from));
+  }
 
   /**
-   * Leave the group
+   * Register a slash command.
+   * @param {string} commandName without slash, e.g. "help"
+   * @param {Function} handler (args: string[], fromId: string) => void
    */
-  PeerGroups.Client.prototype.leave = function(){
-    if (this.conn) this.conn.close();
-    this._joined = false;
-  };
+  registerCommand(commandName, handler) {
+    this._commands.set(commandName, handler);
+  }
 
-  /**
-   * Shutdown completely
-   */
-  PeerGroups.Client.prototype.close = function(){
-    this.leave();
-    this.peer.destroy();
-  };
-
-
-  // ------------------------------------------------------------------------------------------------
-  //                                     Bot Class
-  // ------------------------------------------------------------------------------------------------
-
-  /**
-   * @class Bot
-   * @memberof PeerGroups
-   * @extends PeerGroups.Client
-   * @param {object} config  same as Client
-   *
-   * on('message',...) is already wired to parse "!cmd"
-   */
-  PeerGroups.Bot = function(config){
-    PeerGroups.Client.call(this, config);
-    this._commands = {};
-    this.on('message', (msg, fromId, fromNick)=>{
-      if (typeof msg!=='string') return;
-      if (!msg.startsWith('!')) return;
-      var parts = msg.slice(1).trim().split(/\s+/);
-      var cmd   = parts.shift().toLowerCase();
-      var fn    = this._commands[cmd];
-      if (fn) {
-        try { fn(parts, fromId, fromNick, replyText=>this.send(replyText)); }
-        catch(e){ console.error('Bot handler error', e); }
+  _handleMessage(rawMsg, from) {
+    if (!rawMsg.startsWith('/')) return;
+    const parts = rawMsg.slice(1).split(/\s+/);
+    const cmd = parts.shift();
+    const handler = this._commands.get(cmd);
+    if (handler) {
+      try {
+        handler(parts, from);
+      } catch (err) {
+        this.emit(PeerGroupEvents.ERROR, err);
       }
-    });
-  };
-  PeerGroups.Bot.prototype = Object.create(PeerGroups.Client.prototype);
-  PeerGroups.Bot.prototype.constructor = PeerGroups.Bot;
-
-  /**
-   * Register a command
-   * @param {string} cmdName
-   * @param {function(string[],string,string,function)} handler
-   *   handler(args, fromId, fromNick, reply)
-   */
-  PeerGroups.Bot.prototype.registerCommand = function(cmdName, handler){
-    if (typeof cmdName!=='string' || typeof handler!=='function') {
-      throw new Error('Invalid command registration');
     }
-    this._commands[cmdName.toLowerCase()] = handler;
-  };
+  }
+}
 
-  // expose
-  window.PeerGroups = PeerGroups;
-
-})(window);
+// Export the module for node or browser
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { escapeHTML, PeerGroupEvents, EventListener, AdvancedEmitter, Host, Client, Bot };
+}
