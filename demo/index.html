@@ -1,1 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PeerGroups Host</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+        }
+
+        h1, h2 {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        input[type="text"] {
+            width: 300px;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 10px 15px;
+            margin-top: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #3e8e41;
+        }
+
+        #host-log {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            height: 250px;
+            overflow-y: scroll;
+        }
+
+        #chat-log {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            height: 150px;
+            overflow-y: scroll;
+        }
+    </style>
+</head>
+<body>
+    <h1>PeerGroups Host</h1>
+
+    <div id="host-section">
+        <h2>Host Settings</h2>
+        <label for="host-group-id">Group ID:</label>
+        <input type="text" id="host-group-id" value="my-group" />
+        <label for="host-admin-secret">Admin Secret:</label>
+        <input type="text" id="host-admin-secret" value="admin-secret" />
+        <button id="create-host">Create Host</button>
+        <div id="host-log"></div>
+    </div>
+
+    <div id="chat-section">
+        <h2>Chat</h2>
+        <label for="message-input">Message:</label>
+        <input type="text" id="message-input" />
+        <button id="send-message">Send</button>
+        <div id="chat-log"></div>
+    </div>
+
+    <script src="./lib/peerjs.min.js"></script>
+    <script>
+        let PeerGroups = null;
+
+        async function loadPeerGroups() {
+            try {
+                const module = await import('./src/peergroups.js'); // Adjust the path!
+                PeerGroups = module;
+            } catch (error) {
+                console.error("Failed to load PeerGroups:", error);
+                alert("Failed to load PeerGroups library.  Check the path.");
+            }
+        }
+
+        loadPeerGroups();
+
+        // Helper function to log messages
+        function log(sectionId, message) {
+            const logElement = document.querySelector(`#${sectionId}-log`);
+            if (logElement) {
+                logElement.innerHTML += `<p>${message}</p>`;
+                logElement.scrollTop = logElement.scrollHeight; // Auto-scroll
+            }
+        }
+
+        let host;
+
+        // --- Host Setup ---
+        document.querySelector('#create-host')?.addEventListener('click', () => {
+            if (!PeerGroups) { alert("PeerGroups library not loaded."); return; }
+
+            const groupId = document.querySelector('#host-group-id').value;
+            const adminSecret = document.querySelector('#host-admin-secret').value;
+
+            host = new PeerGroups.Host(groupId);
+            host.setupAdmin(adminSecret);
+
+            log('host', `Host created with ID: ${groupId}`);
+
+            host.on(PeerGroups.PeerGroupEvents.OPEN, (id) => log('host', `Peer ID: ${id}`));
+            host.on(PeerGroups.PeerGroupEvents.ERROR, (err) => log('host', `Error: ${err.message}`));
+            host.on(PeerGroups.PeerGroupEvents.MEMBER_JOINED, (clientId, nickname) => log('host', `${nickname} (${clientId}) joined`));
+            host.on(PeerGroups.PeerGroupEvents.MESSAGE, (message, clientId, nickname) => log('chat', `[${nickname}]: ${message}`));
+        });
+
+        // --- Chat Functionality ---
+        document.querySelector('#send-message')?.addEventListener('click', () => {
+            if (!PeerGroups) { alert("PeerGroups library not loaded."); return; }
+
+            const messageInput = document.querySelector('#message-input');
+            const message = messageInput.value;
+
+            if (host) {
+                host.send(message);
+                messageInput.value = '';
+            } else {
+                log('chat', 'Error: Host not created.');
+            }
+        });
+    </script>
+</body>
+</html>
 
