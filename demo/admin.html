@@ -91,13 +91,13 @@
          <button id="unban-client">Unban Client</button>
        <div id="admin-action-log"></div>
     </div>
-    <script src="./lib/peerjs.min.js"></script>
+    <script src="../lib/peerjs.min.js"></script>
     <script>
         let PeerGroups = null;
 
         async function loadPeerGroups() {
             try {
-                const module = await import('./src/peerjs-groups.js'); // Adjust the path!
+                const module = await import('../src/peerjs-groups.js'); // Adjust the path!
                 PeerGroups = module;
             } catch (error) {
                 console.error("Failed to load PeerGroups:", error);
