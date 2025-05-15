@@ -3,7 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Home - Documentation</title>
+    <title>PeerGroups
+A robust peer-to-peer group chat library with fine-grained event handling,
+private messaging, bot integration, and XSS-safe message processing. - Documentation</title>
 
     <script src="scripts/prettify/prettify.js"></script>
     <script src="scripts/prettify/lang-css.js"></script>
@@ -31,25 +33,355 @@ private messaging, bot integration, and XSS-safe message processing.</a></span><
 
 <div id="main">
     
+    <h1 class="page-title">PeerGroups
+A robust peer-to-peer group chat library with fine-grained event handling,
+private messaging, bot integration, and XSS-safe message processing.</h1>
+    
 
     
 
 
 
+
+<section>
+
+<header>
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+
+        
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="peerjs-groups.js.html">peerjs-groups.js</a>, <a href="peerjs-groups.js.html#line1">line 1</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+        
+    
+    </div>
+
+    
+
+    
+
+    
+        <h3 class="subsection-title">Classes</h3>
+
+        <dl>
+            <dt><a href="PeerGroups%250AA%2520robust%2520peer-to-peer%2520group%2520chat%2520library%2520with%2520fine-grained%2520event%2520handling,%250Aprivate%2520messaging,%2520bot%2520integration,%2520and%2520XSS-safe%2520message%2520processing.module_-AdvancedEmitter.html">AdvancedEmitter</a></dt>
+            <dd></dd>
+        
+            <dt><a href="PeerGroups%250AA%2520robust%2520peer-to-peer%2520group%2520chat%2520library%2520with%2520fine-grained%2520event%2520handling,%250Aprivate%2520messaging,%2520bot%2520integration,%2520and%2520XSS-safe%2520message%2520processing.module_-Bot.html">Bot</a></dt>
+            <dd></dd>
+        
+            <dt><a href="PeerGroups%250AA%2520robust%2520peer-to-peer%2520group%2520chat%2520library%2520with%2520fine-grained%2520event%2520handling,%250Aprivate%2520messaging,%2520bot%2520integration,%2520and%2520XSS-safe%2520message%2520processing.module_-Client.html">Client</a></dt>
+            <dd></dd>
+        
+            <dt><a href="PeerGroups%250AA%2520robust%2520peer-to-peer%2520group%2520chat%2520library%2520with%2520fine-grained%2520event%2520handling,%250Aprivate%2520messaging,%2520bot%2520integration,%2520and%2520XSS-safe%2520message%2520processing.module_-EventListener.html">EventListener</a></dt>
+            <dd></dd>
+        
+            <dt><a href="PeerGroups%250AA%2520robust%2520peer-to-peer%2520group%2520chat%2520library%2520with%2520fine-grained%2520event%2520handling,%250Aprivate%2520messaging,%2520bot%2520integration,%2520and%2520XSS-safe%2520message%2520processing.module_-Host.html">Host</a></dt>
+            <dd></dd>
+        
+            <dt><a href="PeerGroups%250AA%2520robust%2520peer-to-peer%2520group%2520chat%2520library%2520with%2520fine-grained%2520event%2520handling,%250Aprivate%2520messaging,%2520bot%2520integration,%2520and%2520XSS-safe%2520message%2520processing.module_-PeerGroupsBase.html">PeerGroupsBase</a></dt>
+            <dd></dd>
+        </dl>
+    
+
+     
+
+    
+
+    
+        <h3 class="subsection-title">Members</h3>
+
+        
+            
+<div class="section-members">
+<h4 class="name" id="~PeerGroupEvents"><span class="type-signature">(inner, constant) </span>PeerGroupEvents<span class="type-signature"> :string</span></h4>
+
+
+
+
+<div class="description">
+    Known event types for PeerGroups components.
+</div>
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="peerjs-groups.js.html">peerjs-groups.js</a>, <a href="peerjs-groups.js.html#line26">line 26</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+    <h5>Type:</h5>
+    <ul>
+        <li>
+            
+<span class="param-type"><code>string</code></span>
+
+
+        </li>
+    </ul>
+
+
+
+
+
+</div>
+
+        
+    
+
+    
+        <h3 class="subsection-title">Methods</h3>
+
+        
+            
+<div class="section-method">
+
+    
+
+    <h4 class="name" id="~escapeHTML"><span class="type-signature">(inner) </span>escapeHTML<span class="signature">(str)</span><span class="type-signature"> &rarr; {string}</span></h4>
+
     
 
 
 
+<div class="description">
+    Escape HTML special characters to prevent XSS attacks.
+</div>
 
 
 
 
 
+<dl class="details">
 
     
 
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="peerjs-groups.js.html">peerjs-groups.js</a>, <a href="peerjs-groups.js.html#line12">line 12</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
 
 
+
+
+
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>str</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type"><code>string</code></span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">
+                
+                
+            </td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="section-returns">
+<h5>Returns:</h5>
+
+        
+
+<dl class="param-type">
+    <dt>
+        Type:
+    </dt>
+    <dd>
+        
+<span class="param-type"><code>string</code></span>
+
+
+    </dd>
+</dl>
+
+
+    
+</div>
+
+
+
+</div>
+        
+    
+
+    
+
+    
+</article>
+
+</section>
 
 
 

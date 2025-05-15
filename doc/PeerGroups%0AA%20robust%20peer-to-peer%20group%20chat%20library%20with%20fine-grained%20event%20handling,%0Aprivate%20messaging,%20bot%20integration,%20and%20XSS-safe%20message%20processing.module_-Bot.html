@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Home - Documentation</title>
+    <title>Bot - Documentation</title>
 
     <script src="scripts/prettify/prettify.js"></script>
     <script src="scripts/prettify/lang-css.js"></script>
@@ -31,11 +31,39 @@ private messaging, bot integration, and XSS-safe message processing.</a></span><
 
 <div id="main">
     
+    <h1 class="page-title">Bot</h1>
+    
 
     
 
 
 
+
+<section>
+
+<header>
+    
+        <h2>
+            <span class="ancestors"><a href="PeerGroups%250AA%2520robust%2520peer-to-peer%2520group%2520chat%2520library%2520with%2520fine-grained%2520event%2520handling,%250Aprivate%2520messaging,%2520bot%2520integration,%2520and%2520XSS-safe%2520message%2520processing.module_.html">PeerGroups
+A robust peer-to-peer group chat library with fine-grained event handling,
+private messaging, bot integration, and XSS-safe message processing.</a>~</span>
+        
+        Bot
+        </h2>
+        
+    
+</header>
+
+<article>
+    <div class="container-overview">
+    
+        
+<div class="section-method">
+
+    
+
+    <h4 class="name" id="Bot"><span class="type-signature"></span>new Bot<span class="signature">()</span><span class="type-signature"></span></h4>
+
     
 
 
@@ -44,12 +72,346 @@ private messaging, bot integration, and XSS-safe message processing.</a></span><
 
 
 
+<dl class="details">
 
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="peerjs-groups.js.html">peerjs-groups.js</a>, <a href="peerjs-groups.js.html#line472">line 472</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div>
+    
+    </div>
+
+    
+        <h3 class="subsection-title">Extends</h3>
+
+        
+
+
+    <ul>
+        <li>Client</li>
+    </ul>
+
+
+    
+
+    
+
+    
+
+     
+
+    
+
+    
+        <h3 class="subsection-title">Members</h3>
+
+        
+            
+<div class="section-members">
+<h4 class="name" id="PeerGroups
+A robust peer-to-peer group chat library with fine-grained event handling,
+private messaging, bot integration, and XSS-safe message processing.module:~Bot#_commands"><span class="type-signature"></span>PeerGroups
+A robust peer-to-peer group chat library with fine-grained event handling,
+private messaging, bot integration, and XSS-safe message processing.module:~Bot#_commands<span class="type-signature"> :Map.&lt;string, function()></span></h4>
+
+
+
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="peerjs-groups.js.html">peerjs-groups.js</a>, <a href="peerjs-groups.js.html#line476">line 476</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+    <h5>Type:</h5>
+    <ul>
+        <li>
+            
+<span class="param-type"><code>Map.&lt;string, function()></code></span>
+
+
+        </li>
+    </ul>
+
+
+
+
+
+</div>
+
+        
+    
+
+    
+        <h3 class="subsection-title">Methods</h3>
+
+        
+            
+<div class="section-method">
+
+    
+
+    <h4 class="name" id="registerCommand"><span class="type-signature"></span>registerCommand<span class="signature">(commandName, handler)</span><span class="type-signature"></span></h4>
 
     
 
 
 
+<div class="description">
+    Register a slash command.
+</div>
+
+
+
+
+
+<dl class="details">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    <dt class="tag-source">Source:</dt>
+    <dd class="tag-source"><ul class="dummy"><li>
+        <a href="peerjs-groups.js.html">peerjs-groups.js</a>, <a href="peerjs-groups.js.html#line485">line 485</a>
+    </li></ul></dd>
+    
+
+    
+
+    
+
+    
+</dl>
+
+
+
+
+
+
+
+
+
+    <h5>Parameters:</h5>
+    
+
+<table class="params">
+    <thead>
+    <tr>
+        
+        <th>Name</th>
+        
+
+        <th>Type</th>
+
+        
+
+        
+
+        <th class="last">Description</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    
+
+        <tr>
+            
+                <td class="name"><code>commandName</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type"><code>string</code></span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">
+                without slash, e.g. "help"
+                
+            </td>
+        </tr>
+
+    
+
+        <tr>
+            
+                <td class="name"><code>handler</code></td>
+            
+
+            <td class="type">
+            
+                
+<span class="param-type"><code>function</code></span>
+
+
+            
+            </td>
+
+            
+
+            
+
+            <td class="description last">
+                (args: string[], fromId: string) => void
+                
+            </td>
+        </tr>
+
+    
+    </tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</div>
+        
+    
+
+    
+
+    
+</article>
+
+</section>
 
 
 
