@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PeerGroups Load Test</title>
+</head>
+<body>
+    <h1>PeerGroups Load Test</h1>
+
+    <div id="output"></div>
+
+    <script src="https://unpkg.com/peerjs@1.5.0/dist/peerjs.min.js"></script>
+    <script>
+        const peerGroupsPath = '../peergroups.js';
+
+        async function testPeerGroupsLoad() {
+            const outputElement = document.getElementById('output');
+            if (!outputElement) return;
+
+            try {
+                const module = await import(peerGroupsPath);
+                if (module && typeof module.escapeHTML === 'function') {
+                    outputElement.innerHTML = `<p>PeerGroups library loaded successfully!</p>`;
+                    outputElement.innerHTML += `<p>Testing escapeHTML: ${module.escapeHTML('<script>alert("XSS")</script>')}</p>`;
+                } else {
+                    outputElement.innerHTML = `<p>PeerGroups library loaded, but 'escapeHTML' function is missing or invalid.</p>`;
+                    console.error("PeerGroups loaded but 'escapeHTML' is not a function.", module);
+                }
+            } catch (error) {
+                outputElement.innerHTML = `<p style="color: red;">Error loading PeerGroups: ${error}</p>`;
+                console.error("Error loading PeerGroups:", error);
+            }
+        }
+
+        testPeerGroupsLoad();
+    </script>
+</body>
+</html>
