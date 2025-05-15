@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PeerGroups Admin</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 20px;
+        }
+
+        h1, h2 {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        input[type="text"] {
+            width: 300px;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button {
+            padding: 10px 15px;
+            margin-top: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #3e8e41;
+        }
+
+        #admin-log {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            height: 250px;
+            overflow-y: scroll;
+        }
+        #admin-action-log {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            height: 250px;
+            overflow-y: scroll;
+        }
+    </style>
+</head>
+<body>
+    <h1>PeerGroups Admin</h1>
+
+    <div id="admin-section">
+        <h2>Admin Settings</h2>
+        <label for="admin-id">Admin ID:</label>
+        <input type="text" id="admin-id" value="admin1" />
+        <label for="admin-group-id">Group ID:</label>
+        <input type="text" id="admin-group-id" value="my-group" />
+        <label for="admin-secret">Admin Secret:</label>
+        <input type="text" id="admin-secret" value="admin-secret" />
+        <button id="create-admin">Create Admin</button>
+        <div id="admin-log"></div>
+    </div>
+     <div id="admin-action-section">
+      <h2>Admin Actions</h2>
+        <label for="kick-client-id">Kick Client ID:</label>
+        <input type="text" id="kick-client-id" value="" />
+        <label for="kick-reason">Kick Reason:</label>
+        <input type="text" id="kick-reason" value="Inappropriate behaviour" />
+        <button id="kick-client">Kick Client</button>
+        <br>
+         <label for="ban-client-id">Ban Client ID:</label>
+         <input type="text" id="ban-client-id" value="" />
+         <button id="ban-client">Ban Client</button>
+         <br>
+        <label for="unban-client-id">Unban Client ID:</label>
+         <input type="text" id="unban-client-id" value="" />
+         <button id="unban-client">Unban Client</button>
+       <div id="admin-action-log"></div>
+    </div>
+    <script src="./lib/peerjs.min.js"></script>
+    <script>
+        let PeerGroups = null;
+
+        async function loadPeerGroups() {
+            try {
+                const module = await import('./src/peergroups.js'); // Adjust the path!
+                PeerGroups = module;
+            } catch (error) {
+                console.error("Failed to load PeerGroups:", error);
+                alert("Failed to load PeerGroups library.  Check the path.");
+            }
+        }
+
+        loadPeerGroups();
+
+        // Helper function to log messages
+        function log(sectionId, message) {
+            const logElement = document.querySelector(`#${sectionId}-log`);
+              if (logElement) {
+                  logElement.innerHTML += `<p>${message}</p>`;
+                  logElement.scrollTop = logElement.scrollHeight; // Auto-scroll
+              }
+          }
+          function logAction(sectionId, message) {
+            const logElement = document.querySelector(`#${sectionId}-log`);
+              if (logElement) {
+                  logElement.innerHTML += `<p>${message}</p>`;
+                  logElement.scrollTop = logElement.scrollHeight; // Auto-scroll
+              }
+          }
+
+        let admin;
+
+        // --- Admin Setup ---
+        document.querySelector('#create-admin')?.addEventListener('click', () => {
+            if (!PeerGroups) { alert("PeerGroups library not loaded."); return; }
+
+            const adminId = document.querySelector('#admin-id').value;
+            const groupId = document.querySelector('#admin-group-id').value;
+            const adminSecret = document.querySelector('#admin-secret').value;
+
+            admin = new PeerGroups.PeerAdmin(adminId, groupId, adminSecret);
+
+            log('admin', `Admin created with ID: ${adminId}`);
+
+            admin.on(PeerGroups.PeerGroupEvents.OPEN, (id) => {
+                log('admin', `Peer ID: ${id}`);
+                admin.connect(groupId); // Auto-connect
+            });
+            admin.on(PeerGroups.PeerGroupEvents.ERROR, (err) => log('admin', `Error: ${err.message}`));
+            admin.on('adminAuthSuccess', () => log('admin', 'Admin authenticated!'));
+            admin.on('adminAuthFailed', (reason) => log('admin', `Admin authentication failed: ${reason}`));
+            admin.on(PeerGroups.PeerGroupEvents.MEMBER_LIST, (memberList) => {
+                log('admin', `Member List: ${JSON.stringify(memberList)}`);
+            });
+        });
+
+        document.querySelector('#kick-client')?.addEventListener('click', () => {
+            if (!PeerGroups || !admin) { alert("PeerGroups library not loaded or Admin not created."); return; }
+
+            const clientId = document.querySelector('#kick-client-id').value;
+            const reason = document.querySelector('#kick-reason').value;
+
+            admin.kickClient(clientId, reason);
+            logAction('admin-action',`kicked ${clientId} because ${reason}`)
+        });
+
+        document.querySelector('#ban-client')?.addEventListener('click', () => {
+            if (!PeerGroups || !admin) { alert("PeerGroups library not loaded or Admin not created."); return; }
+
+            const clientId = document.querySelector('#ban-client-id').value;
+
+            admin.banClient(clientId);
+            logAction('admin-action',`Banned ${clientId}`)
+        });
+
+        document.querySelector('#unban-client')?.addEventListener('click', () => {
+            if (!PeerGroups || !admin) { alert("PeerGroups library not loaded or Admin not created."); return; }
+
+            const clientId = document.querySelector('#unban-client-id').value;
+
+            admin.unbanClient(clientId);
+            logAction('admin-action',`Unbanned ${clientId}`)
+        });
+
+    </script>
+</body>
+</html>
